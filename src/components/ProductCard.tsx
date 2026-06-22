@@ -30,8 +30,8 @@ export function ProductCard({ product, onClick }: { product: Product; onClick?: 
         <span className="absolute bottom-3 left-3 rounded-md bg-background/80 px-2 py-1 text-[10px] font-medium uppercase tracking-wider text-muted-foreground backdrop-blur">
           {product.source}
         </span>
-        <span className="absolute bottom-3 right-3 inline-flex items-center gap-1 rounded-md border border-accent/40 bg-accent/15 px-2 py-1 text-[10px] font-semibold tabular-nums text-accent backdrop-blur">
-          Deal {product.dealScore}
+        <span className={`absolute bottom-3 right-3 rounded-md border px-2 py-1 text-[10px] font-bold uppercase tracking-wider backdrop-blur ${deal.className}`}>
+          {deal.label}
         </span>
       </div>
 
