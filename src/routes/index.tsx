@@ -5,10 +5,10 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
-import { products } from "@/lib/products";
+import { products, type Product } from "@/lib/products";
 import { ProductCard } from "@/components/ProductCard";
 import { FilterPanel, defaultFilters, type Filters } from "@/components/FilterPanel";
-import { PriceTrendCard } from "@/components/PriceTrendCard";
+import { ProductDetailModal } from "@/components/ProductDetailModal";
 
 export const Route = createFileRoute("/")({
   head: () => ({
