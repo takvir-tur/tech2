@@ -70,6 +70,3 @@ function Stat({ label, value, icon, accent }: { label: string; value: string; ic
     </div>
   );
 }
-
-// Suppress unused import warning
-void TrendingDown;
