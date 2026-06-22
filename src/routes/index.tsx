@@ -103,13 +103,10 @@ function Home() {
 
         {/* Hot deals row */}
         <div className="mb-12 grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-4">
-          {hot.map((p) => <ProductCard key={p.id} product={p} />)}
+          {hot.map((p) => <ProductCard key={p.id} product={p} onClick={() => setSelected(p)} />)}
         </div>
 
-        {/* Market analytics */}
-        <div className="mb-12">
-          <PriceTrendCard />
-        </div>
+
 
         {/* Toolbar */}
         <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
