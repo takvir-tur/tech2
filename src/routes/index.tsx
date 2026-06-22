@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { products } from "@/lib/products";
 import { ProductCard } from "@/components/ProductCard";
 import { FilterPanel, defaultFilters, type Filters } from "@/components/FilterPanel";
+import { PriceTrendCard } from "@/components/PriceTrendCard";
 
 export const Route = createFileRoute("/")({
   head: () => ({
