@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { products } from "@/lib/products";
 import { ProductCard } from "@/components/ProductCard";
 import { FilterPanel, defaultFilters, type Filters } from "@/components/FilterPanel";
+import { PriceTrendCard } from "@/components/PriceTrendCard";
 
 export const Route = createFileRoute("/")({
   head: () => ({
@@ -102,6 +103,11 @@ function Home() {
         {/* Hot deals row */}
         <div className="mb-12 grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-4">
           {hot.map((p) => <ProductCard key={p.id} product={p} />)}
+        </div>
+
+        {/* Market analytics */}
+        <div className="mb-12">
+          <PriceTrendCard />
         </div>
 
         {/* Toolbar */}
