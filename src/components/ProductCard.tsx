@@ -6,7 +6,10 @@ import { Badge } from "@/components/ui/badge";
 export function ProductCard({ product, onClick }: { product: Product; onClick?: () => void }) {
   const deal = getDealBadge(product);
   return (
-    <article className="group flex flex-col overflow-hidden rounded-2xl border bg-card transition-colors hover:border-accent/60">
+    <article
+      onClick={onClick}
+      className="group flex cursor-pointer flex-col overflow-hidden rounded-2xl border bg-card transition-all hover:-translate-y-0.5 hover:border-accent/60 hover:shadow-xl"
+    >
       <div className="relative aspect-square overflow-hidden bg-secondary">
         <img
           src={product.image}
