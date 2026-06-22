@@ -37,36 +37,36 @@
 
 :root {
   --radius: 0.75rem;
-  /* Dark theme by default — Tech 2 marketplace */
-  --background: oklch(0.16 0.005 260);
-  --foreground: oklch(0.98 0.002 260);
-  --card: oklch(0.205 0.006 260);
-  --card-foreground: oklch(0.98 0.002 260);
-  --popover: oklch(0.205 0.006 260);
-  --popover-foreground: oklch(0.98 0.002 260);
-  --primary: oklch(0.98 0.002 260);
-  --primary-foreground: oklch(0.16 0.005 260);
-  --secondary: oklch(0.245 0.008 260);
-  --secondary-foreground: oklch(0.98 0.002 260);
-  --muted: oklch(0.245 0.008 260);
-  --muted-foreground: oklch(0.65 0.01 260);
-  --accent: oklch(0.78 0.16 155);
-  --accent-foreground: oklch(0.16 0.005 260);
-  --destructive: oklch(0.65 0.22 25);
-  --destructive-foreground: oklch(0.98 0.002 260);
-  --border: oklch(0.28 0.008 260);
-  --input: oklch(0.28 0.008 260);
-  --ring: oklch(0.78 0.16 155);
-  --ai: oklch(0.72 0.18 295);
-  --ai-foreground: oklch(0.98 0.002 260);
-  --sidebar: oklch(0.18 0.005 260);
-  --sidebar-foreground: oklch(0.98 0.002 260);
-  --sidebar-primary: oklch(0.78 0.16 155);
-  --sidebar-primary-foreground: oklch(0.16 0.005 260);
-  --sidebar-accent: oklch(0.245 0.008 260);
-  --sidebar-accent-foreground: oklch(0.98 0.002 260);
-  --sidebar-border: oklch(0.28 0.008 260);
-  --sidebar-ring: oklch(0.78 0.16 155);
+  /* Tech 2 — darkBg #0B0F19, cardBg #161B26, accent green #10B981, border #242C3D */
+  --background: #0B0F19;
+  --foreground: #F4F6FA;
+  --card: #161B26;
+  --card-foreground: #F4F6FA;
+  --popover: #161B26;
+  --popover-foreground: #F4F6FA;
+  --primary: #F4F6FA;
+  --primary-foreground: #0B0F19;
+  --secondary: #1B2230;
+  --secondary-foreground: #F4F6FA;
+  --muted: #1B2230;
+  --muted-foreground: #8A93A6;
+  --accent: #10B981;
+  --accent-foreground: #06140E;
+  --destructive: #EF4444;
+  --destructive-foreground: #F4F6FA;
+  --border: #242C3D;
+  --input: #242C3D;
+  --ring: #10B981;
+  --ai: #A78BFA;
+  --ai-foreground: #F4F6FA;
+  --sidebar: #0F1422;
+  --sidebar-foreground: #F4F6FA;
+  --sidebar-primary: #10B981;
+  --sidebar-primary-foreground: #06140E;
+  --sidebar-accent: #1B2230;
+  --sidebar-accent-foreground: #F4F6FA;
+  --sidebar-border: #242C3D;
+  --sidebar-ring: #10B981;
 }
 
 @layer base {
