@@ -15,12 +15,18 @@ export function ProductCard({ product }: { product: Product }) {
           className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105"
         />
         {product.hot && (
-          <span className="absolute left-3 top-3 rounded-full bg-accent px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wider text-accent-foreground">
+          <span className="absolute left-3 top-3 inline-flex items-center gap-1 rounded-full bg-accent px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wider text-accent-foreground">
             Hot
           </span>
         )}
         <span className="absolute right-3 top-3 rounded-full bg-background/70 px-2.5 py-1 text-[10px] font-medium uppercase tracking-wider text-foreground backdrop-blur">
           {product.condition}
+        </span>
+        <span className="absolute bottom-3 left-3 rounded-md bg-background/80 px-2 py-1 text-[10px] font-medium uppercase tracking-wider text-muted-foreground backdrop-blur">
+          {product.source}
+        </span>
+        <span className="absolute bottom-3 right-3 inline-flex items-center gap-1 rounded-md border border-accent/40 bg-accent/15 px-2 py-1 text-[10px] font-semibold tabular-nums text-accent backdrop-blur">
+          Deal {product.dealScore}
         </span>
       </div>
 
