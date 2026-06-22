@@ -1,5 +1,5 @@
 import { Dialog, DialogContent } from "@/components/ui/dialog";
-import { Sparkles, TrendingDown, BatteryMedium, ShieldCheck, Package, Calendar, Store } from "lucide-react";
+import { Sparkles, BatteryMedium, ShieldCheck, Package, Calendar, Store } from "lucide-react";
 import { type Product, formatPrice } from "@/lib/products";
 import { getDealBadge, generateTrendPoints } from "@/lib/deal";
 import { PriceTrendCard } from "./PriceTrendCard";
