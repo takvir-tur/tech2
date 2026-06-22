@@ -105,6 +105,11 @@ function Home() {
           {hot.map((p) => <ProductCard key={p.id} product={p} />)}
         </div>
 
+        {/* Market analytics */}
+        <div className="mb-12">
+          <PriceTrendCard />
+        </div>
+
         {/* Toolbar */}
         <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
           <h2 className="font-display text-xl font-semibold md:text-2xl">
