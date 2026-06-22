@@ -171,6 +171,8 @@ function Home() {
         </div>
       </main>
 
+      <ProductDetailModal product={selected} open={!!selected} onOpenChange={(o) => !o && setSelected(null)} />
+
       <footer className="border-t border-border py-8 text-center text-xs text-muted-foreground">
         Tech 2 · Aggregating premium second-hand tech listings.
       </footer>
