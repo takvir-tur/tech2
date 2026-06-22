@@ -5,10 +5,10 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
-import { products } from "@/lib/products";
+import { products, type Product } from "@/lib/products";
 import { ProductCard } from "@/components/ProductCard";
 import { FilterPanel, defaultFilters, type Filters } from "@/components/FilterPanel";
-import { PriceTrendCard } from "@/components/PriceTrendCard";
+import { ProductDetailModal } from "@/components/ProductDetailModal";
 
 export const Route = createFileRoute("/")({
   head: () => ({
@@ -28,6 +28,7 @@ function Home() {
   const [query, setQuery] = useState("");
   const [filters, setFilters] = useState<Filters>(defaultFilters);
   const [sort, setSort] = useState<SortKey>("deal-desc");
+  const [selected, setSelected] = useState<Product | null>(null);
 
   const filtered = useMemo(() => {
     let list = products.filter((p) => {
@@ -102,13 +103,10 @@ function Home() {
 
         {/* Hot deals row */}
         <div className="mb-12 grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-4">
-          {hot.map((p) => <ProductCard key={p.id} product={p} />)}
+          {hot.map((p) => <ProductCard key={p.id} product={p} onClick={() => setSelected(p)} />)}
         </div>
 
-        {/* Market analytics */}
-        <div className="mb-12">
-          <PriceTrendCard />
-        </div>
+
 
         {/* Toolbar */}
         <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
@@ -166,12 +164,14 @@ function Home() {
               </div>
             ) : (
               <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 xl:grid-cols-3">
-                {filtered.map((p) => <ProductCard key={p.id} product={p} />)}
+                {filtered.map((p) => <ProductCard key={p.id} product={p} onClick={() => setSelected(p)} />)}
               </div>
             )}
           </div>
         </div>
       </main>
+
+      <ProductDetailModal product={selected} open={!!selected} onOpenChange={(o) => !o && setSelected(null)} />
 
       <footer className="border-t border-border py-8 text-center text-xs text-muted-foreground">
         Tech 2 · Aggregating premium second-hand tech listings.

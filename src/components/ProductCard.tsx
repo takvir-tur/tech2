@@ -1,10 +1,15 @@
 import { Sparkles, BatteryMedium, ShieldCheck, Package } from "lucide-react";
 import { type Product, formatPrice } from "@/lib/products";
+import { getDealBadge } from "@/lib/deal";
 import { Badge } from "@/components/ui/badge";
 
-export function ProductCard({ product }: { product: Product }) {
+export function ProductCard({ product, onClick }: { product: Product; onClick?: () => void }) {
+  const deal = getDealBadge(product);
   return (
-    <article className="group flex flex-col overflow-hidden rounded-2xl border bg-card transition-colors hover:border-accent/60">
+    <article
+      onClick={onClick}
+      className="group flex cursor-pointer flex-col overflow-hidden rounded-2xl border bg-card transition-all hover:-translate-y-0.5 hover:border-accent/60 hover:shadow-xl"
+    >
       <div className="relative aspect-square overflow-hidden bg-secondary">
         <img
           src={product.image}
@@ -25,8 +30,8 @@ export function ProductCard({ product }: { product: Product }) {
         <span className="absolute bottom-3 left-3 rounded-md bg-background/80 px-2 py-1 text-[10px] font-medium uppercase tracking-wider text-muted-foreground backdrop-blur">
           {product.source}
         </span>
-        <span className="absolute bottom-3 right-3 inline-flex items-center gap-1 rounded-md border border-accent/40 bg-accent/15 px-2 py-1 text-[10px] font-semibold tabular-nums text-accent backdrop-blur">
-          Deal {product.dealScore}
+        <span className={`absolute bottom-3 right-3 rounded-md border px-2 py-1 text-[10px] font-bold uppercase tracking-wider backdrop-blur ${deal.className}`}>
+          {deal.label}
         </span>
       </div>
 
