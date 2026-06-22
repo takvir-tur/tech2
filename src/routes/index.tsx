@@ -28,6 +28,7 @@ function Home() {
   const [query, setQuery] = useState("");
   const [filters, setFilters] = useState<Filters>(defaultFilters);
   const [sort, setSort] = useState<SortKey>("deal-desc");
+  const [selected, setSelected] = useState<Product | null>(null);
 
   const filtered = useMemo(() => {
     let list = products.filter((p) => {
