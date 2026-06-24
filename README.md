@@ -219,13 +219,7 @@ bun run preview
 
 </div>
 
----
 
-## 📝 Notes
-
-> ⚠️ **Lovable Sync Notice:** This project is connected to [Lovable](https://lovable.dev). Commits pushed to the `main` branch sync back to the Lovable editor automatically. Please **avoid rewriting published git history** — no force pushes, rebasing, or squashing commits that have already been pushed — as it can cause project history loss on Lovable's side. Keep the `main` branch in a working state at all times.
-
----
 
 <div align="center">
 
