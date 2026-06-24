@@ -1,0 +1,92 @@
+@import "tailwindcss" source(none);
+@source "../src";
+@import "tw-animate-css";
+
+@custom-variant dark (&:is(.dark *));
+
+@theme inline {
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+  --radius-2xl: calc(var(--radius) + 8px);
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-ai: var(--ai);
+  --color-ai-foreground: var(--ai-foreground);
+  --font-display: "Space Grotesk", system-ui, sans-serif;
+  --font-sans: "Inter", system-ui, sans-serif;
+}
+
+:root {
+  --radius: 0.75rem;
+  /* Tech 2 — darkBg #0B0F19, cardBg #161B26, accent green #10B981, border #242C3D */
+  --background: #0B0F19;
+  --foreground: #F4F6FA;
+  --card: #161B26;
+  --card-foreground: #F4F6FA;
+  --popover: #161B26;
+  --popover-foreground: #F4F6FA;
+  --primary: #F4F6FA;
+  --primary-foreground: #0B0F19;
+  --secondary: #1B2230;
+  --secondary-foreground: #F4F6FA;
+  --muted: #1B2230;
+  --muted-foreground: #8A93A6;
+  --accent: #10B981;
+  --accent-foreground: #06140E;
+  --destructive: #EF4444;
+  --destructive-foreground: #F4F6FA;
+  --border: #242C3D;
+  --input: #242C3D;
+  --ring: #10B981;
+  --ai: #A78BFA;
+  --ai-foreground: #F4F6FA;
+  --sidebar: #0F1422;
+  --sidebar-foreground: #F4F6FA;
+  --sidebar-primary: #10B981;
+  --sidebar-primary-foreground: #06140E;
+  --sidebar-accent: #1B2230;
+  --sidebar-accent-foreground: #F4F6FA;
+  --sidebar-border: #242C3D;
+  --sidebar-ring: #10B981;
+}
+
+@layer base {
+  * {
+    border-color: var(--color-border);
+  }
+
+  html {
+    color-scheme: dark;
+  }
+
+  body {
+    background-color: var(--color-background);
+    color: var(--color-foreground);
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+  }
+
+  h1, h2, h3, h4 {
+    font-family: var(--font-display);
+    letter-spacing: -0.02em;
+  }
+}
