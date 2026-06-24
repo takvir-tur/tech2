@@ -18,16 +18,6 @@ import { FilterPanel, defaultFilters, type Filters } from "@/components/FilterPa
 import { AiChat } from "@/components/AiChat";
 
 export const Route = createFileRoute("/")({
-  head: () => ({
-    meta: [
-      { title: "Tech 2 — Premium second-hand tech, aggregated" },
-      {
-        name: "description",
-        content:
-          "Find verified second-hand iPhones, iPads, MacBooks and Samsung devices with AI-powered recommendations.",
-      },
-    ],
-  }),
   component: Home,
 });
 
