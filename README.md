@@ -214,8 +214,8 @@ bun run preview
 |----|------|------|
 | 🧑‍💻 | Abu Sayem Mohammed Tanvir | Frontend & UI/UX |
 | 🧑‍💻 | Md. Takvir Hossain Tur | Data Scrapping |
-| 🧑‍💻 | Md. Takvir Hossain Tur | Backend & Api |
-| 🧑‍💻 | Md. Takvir Hossain Tur | Backend & Api |
+| 🧑‍💻 | Md. Ashraf Hossain Chowdhury | Backend & Api |
+| 🧑‍💻 | Lokonath Bosak Bijoy | Backend & Api |
 
 </div>
 
