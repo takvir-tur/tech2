@@ -1,20 +1,32 @@
 """
-swap_scraper.py
-===============
-Production-ready, fault-tolerant web scraper for SWAP.com.bd smartphone listings.
+nexthand_scraper.py  v2
+=======================
+Fixed version addressing the root causes of "No price elements found":
 
-Architecture:
-  - Undetected ChromeDriver    → Bypasses bot fingerprinting at the TLS/browser level
-  - Cloudflare Turnstile Guard → Handles surprise checkpoint interceptions mid-scrape
-  - BeautifulSoup              → Fast HTML parsing on the already-rendered DOM
-  - JSONL Appender             → Crash-proof, line-by-line output for streaming pipelines
+ROOT CAUSE 1 — XPath `contains(text(), '৳')` vs `contains(., '৳')`
+  NextHand renders prices as nested spans:
+    <div class="price-wrapper">
+      <span class="symbol">৳</span>
+      <span class="amount">42,499</span>
+    </div>
+  The parent div has NO direct text node containing ৳ — only its children do.
+  `text()` in XPath only matches direct text nodes; `.` matches the full subtree.
+  FIX: Use `contains(., '৳')` + a tight CSS class selector to avoid matching the whole page.
 
-Target:  https://swap.com.bd/buy/collection-list?id=6
-Output:  swap_inventory.jsonl  (one JSON object per line, UTF-8)
+ROOT CAUSE 2 — BeautifulSoup find_all(string=...) searches TEXT NODES only
+  `soup.find_all(string=re.compile(r'৳'))` finds NavigableString nodes, not elements.
+  A <div>৳42,499</div> works, but <div><span>৳</span><span>42,499</span></div> → nothing.
+  FIX: Walk the DOM by element class patterns instead of text-node searches.
 
-Usage:
-  pip install undetected-chromedriver beautifulsoup4 selenium
-  python swap_scraper.py
+ROOT CAUSE 3 — Card boundary detection was too fragile
+  Walking 8 levels up from a price node to find "battery" in ancestor text is brittle
+  when the price symbol and amount are split across sibling spans.
+  FIX: Find card containers directly by CSS class patterns, then extract fields from
+  each card's full subtree text. Much more robust.
+
+ROOT CAUSE 4 — wait_for_unit_cards XPath also used contains(text(), '৳')
+  Same bug — if ৳ lives in a child span, the XPath never matches and we timeout.
+  FIX: Use contains(., '৳') with a narrower ancestor selector.
 """
 
 import json
@@ -26,41 +38,29 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 import undetected_chromedriver as uc
-from bs4 import BeautifulSoup
+from bs4 import BeautifulSoup, Tag
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
+from selenium.common.exceptions import TimeoutException, WebDriverException
 
 
 # ──────────────────────────────────────────────────────────────────────────────
 # CONFIGURATION
 # ──────────────────────────────────────────────────────────────────────────────
 
-# The base collection URL. The page query param will be appended dynamically.
-BASE_COLLECTION_URL = "https://swap.com.bd/buy/collection-list?id=6"
-
-# JSONL output file — opened in append mode so a crash never loses prior data.
-OUTPUT_FILE = Path("swap_inventory.jsonl")
-
-# How many collection pages to attempt. Adjust based on actual pagination depth.
-# The scraper will also stop early if it detects an empty page (end of results).
-MAX_PAGES = 50
-
-# Human-like delay ranges (seconds) — keeps request cadence within organic bounds.
-PAGE_DELAY_RANGE   = (2.5, 5.0)   # Between list page navigations
-DETAIL_DELAY_RANGE = (2.0, 4.5)   # Between individual product page visits
-CF_WAIT_SECONDS    = 10           # Time given to Cloudflare Turnstile to auto-solve
-
-# Hardcoded platform identifier written into every record.
-SOURCE_PLATFORM = "SWAP"
-
-# Chrome major version — match your locally installed Chrome.
-# Run `google-chrome --version` or `chromium --version` to check.
-CHROME_VERSION = 136
-
+BRAND_URL    = "https://www.nexthand.com/brand/apple"
+OUTPUT_FILE  = Path("nexthand_inventory.jsonl")
+MAX_PAGES    = 30
+PAGE_DELAY_RANGE   = (2.5, 5.0)
+DETAIL_DELAY_RANGE = (2.0, 4.5)
+CF_WAIT_SECONDS    = 30
+SPA_TIMEOUT        = 25   # bumped from 20 — give Nuxt hydration more breathing room
+SOURCE_PLATFORM    = "NextHand"
+CHROME_VERSION     = 149   # match your local Chrome: google-chrome --version
 
 # ──────────────────────────────────────────────────────────────────────────────
-# LOGGING SETUP
+# LOGGING
 # ──────────────────────────────────────────────────────────────────────────────
 
 logging.basicConfig(
@@ -68,453 +68,7 @@ logging.basicConfig(
     format="%(asctime)s  %(levelname)-8s  %(message)s",
     datefmt="%H:%M:%S",
 )
-log = logging.getLogger("swap_scraper")
-
-
-# ──────────────────────────────────────────────────────────────────────────────
-# ANTI-BOT DEFENSE LAYER
-# ──────────────────────────────────────────────────────────────────────────────
-
-def handle_surprise_cloudflare(driver: uc.Chrome) -> bool:
-    """
-    Check if the browser is currently stuck on a Cloudflare verification wall
-    and wait safely for it to resolve without crashing the script.
-    """
-    cf_titles = ["Just a moment", "Cloudflare", "Attention Required", "Security Check", "DDoS-Guard"]
-    
-    try:
-        # Safely attempt to get the title. If Chrome crashed, this triggers the exception.
-        current_title = driver.title
-    except Exception:
-        log.warning("  ⚠️  Browser window was unresponsive or closed during title check.")
-        return False
-
-    # Check the safely captured title
-    if not any(indicator in current_title for indicator in cf_titles):
-        return False  # Normal page — no challenge detected.
-
-    log.info("🔒  Cloudflare challenge detected! Waiting for pass...")
-    
-    # Wait up to 30 seconds for the Turnstile to auto-clear
-    for _ in range(30):
-        try:
-            time.sleep(1)
-            # Check safely in the loop
-            if not any(indicator in driver.title for indicator in cf_titles):
-                log.info("✅  Cloudflare wall cleared successfully!")
-                return True
-        except Exception:
-            # If the window crashes while waiting, break out safely
-            break
-            
-    return False
-
-
-# ──────────────────────────────────────────────────────────────────────────────
-# PARSING UTILITIES
-# ──────────────────────────────────────────────────────────────────────────────
-
-def extract_price(text: str) -> float | None:
-    """
-    Bulletproof price extractor: Checks for currency symbols and strips all non-numeric characters.
-    """
-    if not text:
-        return None
-
-    lower_text = text.lower()
-    # Ensure this string actually contains a price indicator
-    if not any(c in lower_text for c in ['৳', 'bdt', 'tk']):
-        return None
-
-    # Strip out everything that isn't a digit or a decimal point
-    cleaned = re.sub(r"[^\d.]", "", text.replace(",", ""))
-    
-    if cleaned:
-        try:
-            return float(cleaned)
-        except ValueError:
-            pass
-            
-    return None
-
-def extract_battery_health(text: str) -> int | None:
-    """
-    Extract a battery health percentage integer from freeform description text.
-
-    Handles patterns like:
-      - "Battery Health: 88%"
-      - "88% BH"
-      - "Battery: 91%"
-      - "85% battery health"
-    Returns an int (0-100) or None if not found.
-    """
-    if not text:
-        return None
-
-    # Pattern covers "88%", "88 %", "88% BH", "BH: 88", "battery health 88"
-    patterns = [
-        r"battery\s*health[:\s]+(\d{2,3})\s*%?",  # "Battery Health: 88"
-        r"(\d{2,3})\s*%\s*(?:battery|bh)\b",       # "88% Battery" or "88% BH"
-        r"\bbh[:\s]+(\d{2,3})",                     # "BH: 88"
-        r"(\d{2,3})\s*%\s*bh\b",                   # "88% bh"
-        r"battery[:\s]+(\d{2,3})\s*%",             # "Battery: 88%"
-    ]
-    lower = text.lower()
-    for pattern in patterns:
-        m = re.search(pattern, lower)
-        if m:
-            value = int(m.group(1))
-            if 0 <= value <= 100:
-                return value
-    return None
-
-
-def extract_physical_condition(text: str) -> str | None:
-    """
-    Identify the physical condition grade from listing text or badge labels.
-
-    SWAP uses tiered condition vocabulary. We match from most to least specific
-    to avoid "Fair" accidentally matching "Fairly good condition".
-    Returns the canonical condition string or None.
-    """
-    if not text:
-        return None
-
-    lower = text.lower()
-    # Ordered from most restrictive match to most lenient.
-    condition_map = [
-        ("like new",    "Like New"),
-        ("mint",        "Mint"),
-        ("excellent",   "Excellent"),
-        ("very good",   "Very Good"),
-        ("good",        "Good"),
-        ("fair",        "Fair"),
-        ("poor",        "Poor"),
-    ]
-    for keyword, label in condition_map:
-        if keyword in lower:
-            return label
-    return None
-
-
-def extract_warranty_status(text: str) -> str | None:
-    """
-    Identify warranty type from product description text.
-
-    Common SWAP warranty strings: "Official Warranty", "Shop Warranty",
-    "No Warranty", "Seller Warranty".  Returns a normalised label or None.
-    """
-    if not text:
-        return None
-
-    lower = text.lower()
-    if "official" in lower and "warranty" in lower:
-        return "Official"
-    if "shop" in lower and "warranty" in lower:
-        return "Shop Warranty"
-    if "seller" in lower and "warranty" in lower:
-        return "Seller Warranty"
-    if any(phrase in lower for phrase in ("no warranty", "without warranty", "no warr")):
-        return "None"
-    if "warranty" in lower:
-        return "Warranty (unspecified)"
-    return None
-
-
-def extract_includes_box(text: str) -> bool | None:
-    """
-    Determine whether the listing includes the original box.
-
-    Looks for positive indicators ("with box", "original box included") and
-    negative indicators ("no box", "without box").  Returns True, False, or
-    None if the listing is silent on the matter.
-    """
-    if not text:
-        return None
-
-    lower = text.lower()
-    positive = ("with box", "original box", "box included", "comes with box", "full box")
-    negative = ("no box", "without box", "box not included", "no original box")
-
-    # Check negatives FIRST — "No box included" contains "box included",
-    # so a positive-first scan would give a false True.
-    if any(n in lower for n in negative):
-        return False
-    if any(p in lower for p in positive):
-        return True
-    return None  # Information not present — do not assume.
-
-
-
-def map_swap_condition(raw_text: str) -> str | None:
-    """
-    Map SWAP's exact scratch terminology to standard marketplace conditions.
-    """
-    if not raw_text:
-        return None
-        
-    text = raw_text.lower()
-    
-    if "no scratch" in text:
-        return "Excellent"
-    if "minor scratch" in text:
-        return "Good"
-    if "moderate scratch" in text or "dent" in text:
-        return "Scratched"
-        
-    return raw_text.strip()
-
-    
-# ──────────────────────────────────────────────────────────────────────────────
-# DETAIL PAGE SCRAPER
-# ──────────────────────────────────────────────────────────────────────────────
-
-def scrape_detail_page(driver: uc.Chrome, url: str) -> list[dict]:
-    """
-    Navigate to a product page, wait for Next.js hydration, and extract
-    ALL available units as separate database records.
-    """
-    time.sleep(random.uniform(*DETAIL_DELAY_RANGE))
-    driver.get(url)
-
-    if handle_surprise_cloudflare(driver):
-        log.info("🔄  Re-loading detail page after Cloudflare clear: %s", url)
-        driver.get(url)
-        time.sleep(3)
-
-    try:
-        WebDriverWait(driver, 6).until(
-            EC.presence_of_element_located((By.CSS_SELECTOR, ".product-details-top, .product-info, .different-unit"))
-        )
-    except Exception:
-        log.warning("  ⚠️  Timeout: Product data never rendered.")
-
-    soup = BeautifulSoup(driver.page_source, "html.parser")
-
-    # ── 1. Global Product Data ────────────────────────────────────────────────
-    product_name = None
-    top_block = soup.find("div", class_=re.compile(r"product-details-top", re.I))
-    if top_block:
-        strings = list(top_block.stripped_strings)
-        if strings:
-            product_name = strings[0]
-
-    includes_box = None
-    box_label = soup.find(string=re.compile(r"^Box$", re.I))
-    if box_label:
-        parent_row = box_label.find_parent(['tr', 'div', 'li'])
-        if parent_row:
-            includes_box = extract_includes_box(parent_row.get_text(separator=" ", strip=True))
-
-    # Targeted Battery Health hunt
-    battery_health = None
-    bh_label = soup.find(string=re.compile(r"Battery(?:\s*Health)?", re.I))
-    if bh_label:
-        parent_row = bh_label.find_parent(['tr', 'div', 'li'])
-        if parent_row:
-            m = re.search(r"(\d{2,3})\s*%", parent_row.get_text(" ", strip=True))
-            if m: 
-                battery_health = int(m.group(1))
-                
-    if not battery_health:
-        battery_health = extract_battery_health(soup.get_text(separator=" ", strip=True))
-
-    # ── 2. Detect & Parse Individual Units ────────────────────────────────────
-    records = []
-    choose_buttons = soup.find_all(string=re.compile(r"^Choose Item$", re.I))
-    unit_cards = []
-    
-    for btn in choose_buttons:
-        parent = btn.find_parent()
-        for _ in range(6):
-            if parent and parent.get_text(separator=" ").find("Scratches:") != -1:
-                if parent not in unit_cards:
-                    unit_cards.append(parent)
-                break
-            if parent:
-                parent = parent.find_parent()
-
-    if unit_cards:
-        # ── PATH A: Multiple Units Found ──
-        for card in unit_cards:
-            # Join with PIPES so fields don't bleed into each other
-            card_text = card.get_text(separator=" | ", strip=True)
-            
-            price = None
-            for s in card.stripped_strings:
-                extracted = extract_price(s)
-                if extracted:
-                    price = extracted
-                    break
-            
-            physical_condition = None
-            scratch_match = re.search(r"Scratches:\s*([^|]+)", card_text, re.I)
-            if scratch_match:
-                physical_condition = map_swap_condition(scratch_match.group(1).strip())
-                
-            warranty_status = None
-            warr_match = re.search(r"Warranty Status:\s*([^|]+)", card_text, re.I)
-            if warr_match:
-                warranty_status = extract_warranty_status(warr_match.group(1).strip())
-                
-            records.append({
-                "product_name":       product_name,
-                "original_link":      url, 
-                "price":              price,
-                "physical_condition": physical_condition,
-                "battery_health":     battery_health,
-                "warranty_status":    warranty_status,
-                "includes_box":       includes_box,
-                "source_platform":    SOURCE_PLATFORM,
-                "scraped_at":         datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
-            })
-            
-    else:
-        # ── PATH B: Single Unit Fallback ──
-        price = None
-        if top_block:
-            for s in top_block.stripped_strings:
-                extracted = extract_price(s)
-                if extracted:
-                    price = extracted
-                    break
-        
-        physical_condition = None
-        grade_label = soup.find(string=re.compile(r"Product Grade", re.I))
-        if grade_label:
-            parent_row = grade_label.find_parent(['tr', 'div', 'li'])
-            if parent_row:
-                raw_grade = parent_row.get_text(separator=" ", strip=True)
-                physical_condition = re.sub(r"(?i)Product\s*Grade[:\|]?\s*", "", raw_grade).strip()
-        
-        if not physical_condition:
-            scratches_label = soup.find(string=re.compile(r"^Scratches$", re.I))
-            if scratches_label:
-                parent_row = scratches_label.find_parent(['tr', 'div', 'li'])
-                if parent_row:
-                    raw_scratches = parent_row.get_text(separator=" ", strip=True)
-                    val = re.sub(r"(?i)Scratches[:\|]?\s*", "", raw_scratches).strip()
-                    physical_condition = map_swap_condition(val)
-                    
-        warranty_status = None
-        warranty_label = soup.find(string=re.compile(r"Warranty Status", re.I))
-        if warranty_label:
-            parent_row = warranty_label.find_parent(['tr', 'div', 'li'])
-            if parent_row:
-                warranty_status = extract_warranty_status(parent_row.get_text(separator=" ", strip=True))
-
-        records.append({
-            "product_name":       product_name,
-            "original_link":      url,
-            "price":              price,
-            "physical_condition": physical_condition,
-            "battery_health":     battery_health,
-            "warranty_status":    warranty_status,
-            "includes_box":       includes_box,
-            "source_platform":    SOURCE_PLATFORM,
-            "scraped_at":         datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
-        })
-
-    for r in records:
-        log.info(
-            "  ✔  %s | ৳%s | Cond: %s | Box: %s | Warr: %s | Batt: %s",
-            (r["product_name"] or "Unknown")[:18],
-            r["price"],
-            (r["physical_condition"] or "?")[:10],
-            "Yes" if r["includes_box"] else "No" if r["includes_box"] is False else "?",
-            (r["warranty_status"] or "?")[:10],
-            f"{r['battery_health']}%" if r["battery_health"] else "?"
-        )
-
-    return records
-
-
-# ──────────────────────────────────────────────────────────────────────────────
-# JSONL WRITER
-# ──────────────────────────────────────────────────────────────────────────────
-
-def append_record(filepath: Path, record: dict) -> None:
-    """
-    Append a single product record to the JSONL output file.
-
-    Each call opens, writes one line, and closes the file handle — this is
-    intentionally crash-proof: even if the process is killed between two
-    iterations, every previously written line is fully flushed to disk.
-
-    Args:
-        filepath: Path to the .jsonl file.
-        record:   Dict representing one scraped product.
-    """
-    with open(filepath, "a", encoding="utf-8") as fh:
-        fh.write(json.dumps(record, ensure_ascii=False) + "\n")
-
-
-# ──────────────────────────────────────────────────────────────────────────────
-# LISTING PAGE SCRAPER
-# ──────────────────────────────────────────────────────────────────────────────
-
-def scrape_listing_page(driver: uc.Chrome, page_num: int) -> list[str]:
-    """
-    Load one collection listing page and return all product detail URLs found.
-
-    The function is intentionally decoupled from the detail-scraping logic so
-    each layer can fail independently without losing the other's progress.
-
-    Args:
-        driver:   Active ChromeDriver session.
-        page_num: 1-based page number to append as a query parameter.
-
-    Returns:
-        List of absolute product URLs found on this page, possibly empty.
-    """
-    # SWAP paginates with a `page` query parameter.
-    url = f"{BASE_COLLECTION_URL}&page={page_num}"
-    log.info("\n── Page %d ─────────────────────────────────────────", page_num)
-    log.info("  Fetching: %s", url)
-
-    driver.get(url)
-
-    # Cloudflare checkpoint guard for list pages.
-    if handle_surprise_cloudflare(driver):
-        log.info("🔄  Re-loading listing page after Cloudflare clear.")
-        driver.get(url)
-        time.sleep(3)
-
-    # Human-like pause before parsing — lets JS-rendered content fully settle.
-    time.sleep(random.uniform(*PAGE_DELAY_RANGE))
-
-    soup = BeautifulSoup(driver.page_source, "html.parser")
-
-    # ── Find product cards ────────────────────────────────────────────────────
-    # SWAP uses a CSS grid of product cards. Each card is an <a> tag (or wraps
-    # one) linking directly to the product detail page.
-    #
-    # Selector strategy (ordered by specificity, first match wins):
-    #   1. <a> tags whose href contains "/buy/" — the canonical product URL pattern.
-    #   2. Any element with a class hinting at "product-card" or "item".
-    #
-    # We collect hrefs, then deduplicate while preserving order.
-
-    product_links = []
-    seen = set()
-
-    # Primary: direct anchor tags pointing at product detail pages.
-    for tag in soup.find_all("a", href=re.compile(r"/buy/", re.I)):
-        href = tag.get("href", "").strip()
-        if not href:
-            continue
-        # Normalise to an absolute URL.
-        if href.startswith("/"):
-            href = "https://swap.com.bd" + href
-        # Exclude the collection list URL itself to avoid self-loops.
-        if "collection-list" in href:
-            continue
-        if href not in seen:
-            seen.add(href)
-            product_links.append(href)
-
-    log.info("  Found %d product links on page %d.", len(product_links), page_num)
-    return product_links
+log = logging.getLogger("nexthand_scraper")
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -523,121 +77,716 @@ def scrape_listing_page(driver: uc.Chrome, page_num: int) -> list[str]:
 
 def build_driver() -> uc.Chrome:
     """
-    Initialise an Undetected ChromeDriver instance with Apple Silicon specific fixes.
+    Apple Silicon stable ChromeDriver.
+    use_subprocess=True is mandatory on M-series Macs to prevent fork-bomb crashes.
+    page_load_strategy=eager fires as soon as the DOM is interactive, before
+    all network assets finish — Nuxt hydration still needs WebDriverWait after this.
     """
     options = uc.ChromeOptions()
-    
     options.add_argument("--no-sandbox")
     options.add_argument("--disable-dev-shm-usage")
-    options.add_argument("--window-size=1440,900")
+    options.add_argument("--window-size=1366,900")
     options.add_argument("--disable-blink-features=AutomationControlled")
-    
-    # 🍏 Emulate a native Mac Chrome environment cleanly
-    options.add_argument("--lang=en-US,en;q=0.9")
-    options.add_argument("--platform=MacIntel")
-
     options.page_load_strategy = "eager"
 
-    driver = uc.Chrome(
-        options=options, 
-        version_main=149, 
-        use_subprocess=True 
+    return uc.Chrome(
+        options=options,
+        version_main=CHROME_VERSION,
+        use_subprocess=True,      # required for Apple Silicon stability
     )
-    
-    return driver
 
+
+# ──────────────────────────────────────────────────────────────────────────────
+# ANTI-BOT DEFENSE
+# ──────────────────────────────────────────────────────────────────────────────
+
+def handle_surprise_cloudflare(driver: uc.Chrome) -> bool:
+    """
+    Detect Cloudflare Turnstile and wait/auto-click through it.
+    Uses try/except around driver.title as specified — safe for mid-navigation calls.
+    """
+    cf_indicators = ("Just a moment", "Security Check", "Cloudflare",
+                     "Attention Required", "DDoS-Guard")
+    try:
+        title = driver.title
+    except WebDriverException:
+        return False
+
+    if not any(s in title for s in cf_indicators):
+        return False
+
+    log.warning("🚨  CLOUDFLARE CHALLENGE (title: '%s')", title)
+    log.info("⏳  Waiting %ds for Turnstile auto-solve...", CF_WAIT_SECONDS)
+    time.sleep(CF_WAIT_SECONDS)
+
+    try:
+        btn = WebDriverWait(driver, 6).until(EC.element_to_be_clickable((
+            By.XPATH,
+            "//button[contains(., 'Continue')] | //button[contains(., 'Verify')] | //input[@type='submit']"
+        )))
+        driver.execute_script("arguments[0].click();", btn)
+        time.sleep(5)
+    except Exception:
+        pass
+
+    try:
+        title_after = driver.title
+    except WebDriverException:
+        title_after = ""
+
+    if any(s in title_after for s in cf_indicators):
+        log.warning("🛑  Auto-bypass failed — HUMAN INTERVENTION needed in Chrome window.")
+        while True:
+            time.sleep(2)
+            try:
+                t = driver.title
+            except WebDriverException:
+                continue
+            if not any(s in t for s in cf_indicators):
+                break
+
+    log.info("✅  Cloudflare cleared.")
+    time.sleep(2)
+    return True
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# SPA HYDRATION WAITERS
+# ──────────────────────────────────────────────────────────────────────────────
+
+def wait_for_nuxt(driver: uc.Chrome) -> None:
+    """Wait for Nuxt's root mount point before any parsing attempt."""
+    try:
+        WebDriverWait(driver, SPA_TIMEOUT).until(
+            EC.presence_of_element_located((By.CSS_SELECTOR, "div#__nuxt"))
+        )
+    except TimeoutException:
+        log.warning("⚠️   Timed out waiting for #__nuxt. Proceeding anyway.")
+
+
+def wait_for_product_grid(driver: uc.Chrome) -> bool:
+    """
+    Listing page: wait for at least one /product/ link to appear.
+    Returns False on timeout (signals end of catalogue to caller).
+    """
+    try:
+        WebDriverWait(driver, SPA_TIMEOUT).until(
+            EC.presence_of_element_located((By.CSS_SELECTOR, "a[href*='/product/']"))
+        )
+        return True
+    except TimeoutException:
+        return False
+
+
+def wait_for_unit_cards(driver: uc.Chrome) -> bool:
+    """
+    Detail page: Wait specifically for NextHand's unique price elements to render.
+    """
+    try:
+        WebDriverWait(driver, SPA_TIMEOUT).until(
+            EC.presence_of_element_located((By.CSS_SELECTOR, ".price-number"))
+        )
+        return True
+    except TimeoutException:
+        log.warning("⚠️   Unit cards timed out — no '.price-number' found.")
+        return False
+
+# ──────────────────────────────────────────────────────────────────────────────
+# DEBUG HELPER  (set DEBUG=True to dump raw HTML on failure)
+# ──────────────────────────────────────────────────────────────────────────────
+
+DEBUG = False
+
+def dump_html(driver: uc.Chrome, label: str) -> None:
+    if not DEBUG:
+        return
+    path = Path(f"debug_{label}_{int(time.time())}.html")
+    path.write_text(driver.page_source, encoding="utf-8")
+    log.info("🐛  Dumped HTML → %s", path)
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# CARD CONTAINER DETECTION
+# ──────────────────────────────────────────────────────────────────────────────
+
+# Class-name fragments we expect to appear on NextHand's unit card containers.
+# These are intentionally broad — a card wrapper only needs ONE of these to match.
+CARD_CLASS_HINTS = re.compile(
+    r"card|item|unit|listing|product[\-_]?card|match|tile|result",
+    re.I,
+)
+
+def find_unit_card_containers(soup: BeautifulSoup) -> list[Tag]:
+    """
+    Locate the repeating card elements in the 'Pick Your Perfect Match' grid.
+
+    Strategy (three passes, stops as soon as we find something useful):
+
+    Pass 1 — Anchor to the section header, then find sibling/descendant cards.
+      NextHand renders a heading like "Pick Your Perfect Match". We find it,
+      walk to its nearest section-level ancestor, then search for card-like
+      children whose text contains both a price (৳) and a spec ('Battery').
+
+    Pass 2 — Full-page class-name scan.
+      Find all elements matching CARD_CLASS_HINTS that contain both ৳ and battery.
+
+    Pass 3 — Price-element grouping (last resort).
+      Find all elements whose DIRECT subtree contains ৳, de-duplicate by common
+      ancestor, and use those ancestors as card proxies.
+    """
+
+    # ── Pass 1: anchor on section heading ────────────────────────────────────
+    section_root = None
+    for heading_text in ("Pick Your Perfect Match", "Perfect Match", "Available Units"):
+        node = soup.find(string=re.compile(heading_text, re.I))
+        if node:
+            # Walk up until we hit a block-level container.
+            el = node.parent
+            for _ in range(6):
+                if el and el.name in ("section", "div", "main", "article"):
+                    section_root = el
+                    break
+                if el:
+                    el = el.parent
+            break
+
+    search_root = section_root or soup
+
+    # Helper: does this element look like a single unit card?
+    def is_card_candidate(el: Tag) -> bool:
+        if not isinstance(el, Tag):
+            return False
+        text = el.get_text()
+        return "৳" in text and (
+            "battery" in text.lower() or "comes with" in text.lower()
+        )
+
+    # ── Pass 1 result ─────────────────────────────────────────────────────────
+    # Walk direct children of the section root looking for card wrappers.
+    candidates_p1 = []
+    if section_root:
+        for child in section_root.children:
+            if isinstance(child, Tag) and is_card_candidate(child):
+                candidates_p1.append(child)
+        # One level deeper if none found at direct child level.
+        if not candidates_p1:
+            for child in section_root.find_all(True, recursive=False):
+                for grandchild in child.find_all(True, recursive=False):
+                    if is_card_candidate(grandchild):
+                        candidates_p1.append(grandchild)
+
+    if candidates_p1:
+        log.info("  🃏  Found %d unit cards (Pass 1 — section anchor).", len(candidates_p1))
+        return candidates_p1
+
+    # ── Pass 2: class-name scan across full page ──────────────────────────────
+    candidates_p2 = [
+        el for el in search_root.find_all(class_=CARD_CLASS_HINTS)
+        if is_card_candidate(el)
+    ]
+
+    # De-duplicate: if one card is an ancestor of another, keep only the innermost.
+    def dedup_by_nesting(elements: list[Tag]) -> list[Tag]:
+        result = []
+        for el in elements:
+            dominated = any(
+                other is not el and other in el.descendants
+                for other in elements
+            )
+            if not dominated:
+                result.append(el)
+        return result
+
+    candidates_p2 = dedup_by_nesting(candidates_p2)
+
+    if candidates_p2:
+        log.info("  🃏  Found %d unit cards (Pass 2 — class scan).", len(candidates_p2))
+        return candidates_p2
+
+    # ── Pass 3: price-element grouping ────────────────────────────────────────
+    # Find every element whose subtree text contains ৳, then group by the
+    # smallest ancestor that also contains battery/spec text.
+    price_els = [
+        el for el in search_root.find_all(True)
+        if "৳" in el.get_text() and len(el.get_text()) < 200  # small = leaf-ish
+    ]
+
+    card_proxies: dict[int, Tag] = {}
+    for el in price_els:
+        proxy = el
+        for _ in range(8):
+            parent = proxy.parent
+            if parent is None or parent.name in ("body", "html", "[document]"):
+                break
+            parent_text = parent.get_text()
+            if "battery" in parent_text.lower() or "comes with" in parent_text.lower():
+                proxy = parent
+                break
+            proxy = parent
+
+        card_proxies[id(proxy)] = proxy
+
+    candidates_p3 = list(card_proxies.values())
+
+    if candidates_p3:
+        log.info("  🃏  Found %d unit cards (Pass 3 — price grouping).", len(candidates_p3))
+        return candidates_p3
+
+    log.warning("  ⚠️   All three card-detection passes failed.")
+    return []
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# FIELD EXTRACTORS
+# ──────────────────────────────────────────────────────────────────────────────
+
+def extract_price(text: str) -> float | None:
+    """
+    Parse a BDT price string to float.
+    Handles: "৳42,499", "৳ 42,499", nested span output "৳ | 42,499".
+    """
+    if not text:
+        return None
+    # Remove taka sign, commas, spaces, pipe separators
+    cleaned = re.sub(r"[৳,\s|]", "", text)
+    m = re.search(r"\d+(?:\.\d+)?", cleaned)
+    return float(m.group()) if m else None
+
+
+def extract_battery_health(card_text: str) -> int | None:
+    """
+    Extract battery health integer from card text blob.
+    Handles separator-joined text: "Battery Health | : | 85" or "Battery Health: 85".
+    """
+    if not card_text:
+        return None
+    # Collapse any pipe/whitespace runs so "Battery Health | : | 85" → "Battery Health:85"
+    normalised = re.sub(r"[\s|]+", " ", card_text).strip()
+    patterns = [
+        r"battery\s*health\s*:?\s*(\d{2,3})\s*%?",
+        r"\bbh\s*:?\s*(\d{2,3})\s*%?",
+        r"(\d{2,3})\s*%\s*(?:battery|bh)\b",
+    ]
+    lower = normalised.lower()
+    for pattern in patterns:
+        m = re.search(pattern, lower)
+        if m:
+            val = int(m.group(1))
+            if 0 <= val <= 100:
+                return val
+    return None
+
+
+def extract_price_from_card(card: Tag) -> float | None:
+    """
+    Extract price directly from the card's DOM — more reliable than regex on full text.
+
+    FIX v2: Instead of searching text nodes for ৳, we find elements whose
+    subtree contains ৳ and are small (leaf-ish), then grab ALL text from that
+    subtree. This handles the split-span pattern:
+      <span>৳</span><span>42,499</span>  →  subtree text = "৳42,499"
+    """
+    # Find the smallest element containing ৳
+    taka_el = None
+    for el in card.find_all(True):
+        txt = el.get_text()
+        if "৳" in txt and len(txt) < 80:   # 80 chars = price el, not full card
+            taka_el = el
+            break   # find_all returns in document order — first = deepest match
+
+    if taka_el is None:
+        return None
+
+    # Get the full subtree text of this element (captures both sibling spans)
+    raw = taka_el.get_text(separator="", strip=True)
+    return extract_price(raw)
+
+
+def extract_condition(card: Tag) -> str | None:
+    """
+    Extract physical condition badge.
+
+    NextHand renders condition as a coloured pill/badge — typically a <span>
+    or <div> with a very short text value ("Excellent", "Good", etc.) near the
+    top of the card. We scan short text nodes and match against known vocabulary.
+    """
+    known = ("Like New", "Mint", "Excellent", "Very Good", "Good", "Fair", "Poor")
+
+    # Pass 1: look for badge-like elements by class name.
+    badge_hint = re.compile(r"badge|condition|tag|label|grade|status|chip", re.I)
+    for el in card.find_all(class_=badge_hint):
+        text = el.get_text(strip=True)
+        for cond in known:
+            if cond.lower() == text.lower():
+                return cond
+
+    # Pass 2: scan all short text nodes.
+    for el in card.find_all(True):
+        text = el.get_text(strip=True)
+        if 2 <= len(text) <= 25:
+            for cond in known:
+                if cond.lower() == text.lower():
+                    return cond
+
+    # Pass 3: substring scan on full card text (weakest — may false-positive).
+    card_text = card.get_text(separator=" ", strip=True).lower()
+    for cond in known:
+        if cond.lower() in card_text:
+            return cond
+
+    return None
+
+
+def extract_includes_box(card_text: str) -> bool:
+    """
+    Check for 'Original Box' in the "Comes with:" section.
+    Returns True/False — never None (absence = no box).
+    """
+    return "original box" in card_text.lower()
+
+
+def extract_warranty(card_text: str) -> str | None:
+    lower = card_text.lower()
+    if "official warranty" in lower:   return "Official"
+    if "shop warranty"    in lower:    return "Shop Warranty"
+    if "seller warranty"  in lower:    return "Seller Warranty"
+    if "no warranty"      in lower or \
+       "without warranty" in lower:    return "None"
+    if "warranty"         in lower:    return "Warranty (unspecified)"
+    return None
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# JSONL WRITER
+# ──────────────────────────────────────────────────────────────────────────────
+
+def append_record(filepath: Path, record: dict) -> None:
+    """Open, write one line, close — crash-proof per-record flush."""
+    with open(filepath, "a", encoding="utf-8") as fh:
+        fh.write(json.dumps(record, ensure_ascii=False) + "\n")
+
+
+def now_utc() -> str:
+    return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# DETAIL PAGE SCRAPER
+# ──────────────────────────────────────────────────────────────────────────────
+
+def scrape_detail_page(driver: uc.Chrome, url: str) -> list[dict]:
+    """
+    Load one product detail page and return one dict per physical unit card
+    by explicitly targeting NextHand's semantic CSS classes.
+    """
+    time.sleep(random.uniform(*DETAIL_DELAY_RANGE))
+    log.info("  → %s", url)
+
+    driver.get(url)
+
+    if handle_surprise_cloudflare(driver):
+        log.info("🔄  Re-loading detail page after Cloudflare clear: %s", url)
+        driver.get(url)
+        time.sleep(3)
+
+    wait_for_nuxt(driver)
+    cards_ready = wait_for_unit_cards(driver)
+
+    if not cards_ready:
+        log.warning("  ⚠️   Unit grid did not appear at %s", url)
+        return []
+
+    # Extra settle time for Vue elements to fully populate
+    time.sleep(random.uniform(1.5, 2.5))
+
+    soup = BeautifulSoup(driver.page_source, "html.parser")
+
+    # ── 1. Global Product Name ───────────────────────────────────────────────
+    product_name = None
+    h1 = soup.find("h1")
+    if h1:
+        product_name = h1.get_text(strip=True)
+    if not product_name:
+        title_tag = soup.find("title")
+        if title_tag:
+            product_name = re.sub(
+                r"\s*[|\-]\s*nexthand.*$", "",
+                title_tag.get_text(strip=True), flags=re.I
+            ).strip()
+
+    # ── 2. Isolate Unit Cards ────────────────────────────────────────────────
+    records = []
+    unit_cards = []
+    
+    # NextHand stores the unit prices in a specific 'price-number' class 
+    # (Notice this ignores the "You may also like" section which uses 'price' instead)
+    price_nodes = soup.find_all(class_="price-number")
+    
+    for p_node in price_nodes:
+        # Climb up from the price to find the exact card container
+        card = p_node.find_parent("div", class_=re.compile(r"\bcard\b"))
+        if card and card not in unit_cards:
+            unit_cards.append(card)
+
+    if not unit_cards:
+        log.warning("  ⚠️  Failed to isolate unit cards from .price-number elements.")
+        return []
+
+    # ── 3. Extract Data from Cards ───────────────────────────────────────────
+    for card in unit_cards:
+        # Flatten the card into a pipe-separated string (prevents Nuxt squashing)
+        card_text = card.get_text(" | ", strip=True)
+        
+        # 1. Price
+        price = None
+        price_node = card.find(class_="price-number")
+        if price_node:
+            price_str = price_node.get_text(strip=True)
+            # Remove the taka sign and any commas
+            cleaned = re.sub(r"[^\d.]", "", price_str.replace(",", ""))
+            if cleaned:
+                try:
+                    price = float(cleaned)
+                except ValueError:
+                    pass
+        
+        # 2. Condition
+        cond = None
+        badge = card.find(class_="badge")
+        if badge:
+            cond = badge.get_text(strip=True)
+            
+        # 3. Battery Health
+        batt = None
+        # 💥 FIX: [\s:|]* handles "Battery Health: 85", "Battery Health | 85", or "Battery Health: | 85"
+        batt_match = re.search(r"Battery\s*Health[\s:|]*(\d{2,3})", card_text, re.I)
+        if batt_match:
+            batt = int(batt_match.group(1))
+            
+        # 4. Box Inclusion
+        includes_box = "original box" in card_text.lower()
+        
+        # 5. Warranty Status (NextHand rarely lists this on the unit card itself)
+        warranty = None
+        lower_text = card_text.lower()
+        if "official warranty" in lower_text: warranty = "Official"
+        elif "shop warranty" in lower_text: warranty = "Shop Warranty"
+
+        # 6. Storage (RAM / ROM)
+        storage = None
+        # This handles "Storage: 128GB", "Storage | 128GB", or "RAM/ROM: 8GB/128GB"
+        storage_match = re.search(r"(?:Storage|RAM\s*/\s*ROM)[\s:|]+([^|]+)", card_text, re.I)
+        if storage_match:
+            storage = storage_match.group(1).strip()
+
+        record = {
+            "product_name":       product_name,
+            "original_link":      url,
+            "price":              price,
+            "physical_condition": cond,
+            "battery_health":     batt,
+            "storage":            storage,
+            "warranty_status":    warranty,
+            "includes_box":       includes_box,
+            "source_platform":    SOURCE_PLATFORM,
+            "scraped_at":         datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+        }
+        records.append(record)
+        
+        log.info(
+            "    ✔  ৳%s | %s | 🔋%s%% | 💾 %s | box=%s",
+            price, cond or "?", batt or "?", storage or "?", includes_box
+        )
+
+    return records
+    
+
+# ──────────────────────────────────────────────────────────────────────────────
+# LISTING PAGE SCRAPER
+# ──────────────────────────────────────────────────────────────────────────────
+
+def scrape_listing_pages(driver: uc.Chrome, max_pages: int = 2) -> list[str]:
+    """
+    Loads the brand page ONCE and navigates through the pagination bar.
+    Hard-capped to max_pages (default 2) and auto-stops if no new links are found.
+    """
+    log.info("\n── Mapping full catalogue (Bypassing URL Pagination) ────────")
+    driver.get(BRAND_URL)
+
+    if handle_surprise_cloudflare(driver):
+        driver.get(BRAND_URL)
+        time.sleep(3)
+
+    time.sleep(4) # Give the initial grid time to load
+
+    seen_links = set()
+    ordered_links = []
+    current_page = 1
+    consecutive_fails = 0
+
+    while True:
+        # 💥 1. Hard cap check: Stop if we've exceeded the max pages
+        if current_page > max_pages:
+            log.info("🏁  Reached page limit (%d). Stopping map.", max_pages)
+            break
+
+        # Scroll down so the pagination bar is fully in view
+        driver.execute_script("window.scrollTo(0, document.body.scrollHeight - 300);")
+        time.sleep(3) 
+
+        soup = BeautifulSoup(driver.page_source, "html.parser")
+
+        # 2. Harvest Links on Current View
+        current_count = len(seen_links)
+        for tag in soup.find_all("a", href=re.compile(r"/product/", re.I)):
+            href = tag.get("href", "").strip()
+            if not href: continue
+            if href.startswith("/"): href = "https://www.nexthand.com" + href
+            if href not in seen_links:
+                seen_links.add(href)
+                ordered_links.append(href)
+
+        new_links = len(seen_links) - current_count
+        log.info("  Found %d new links on Page %d (Total mapped: %d)", new_links, current_page, len(seen_links))
+
+        # 💥 2. Fail-safe: Break out if we keep finding 0 new links
+        if new_links == 0:
+            consecutive_fails += 1
+            if consecutive_fails >= 2:
+                log.info("🏁  No new links found twice in a row. End of catalogue.")
+                break
+        else:
+            consecutive_fails = 0
+
+        # If we are currently on the max page, don't bother clicking next
+        if current_page == max_pages:
+            log.info("🏁  Mapped requested %d pages. Moving to extraction.", max_pages)
+            break
+
+        next_page_num = current_page + 1
+        clicked_next = False
+
+        # 3. Strategy A: Tag-Agnostic Number Hunt
+        try:
+            next_num_xpath = (
+                f"//ul//*[normalize-space(text())='{next_page_num}'] | "
+                f"//nav//*[normalize-space(text())='{next_page_num}']"
+            )
+            next_num_btn = driver.find_element(By.XPATH, next_num_xpath)
+            
+            driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", next_num_btn)
+            time.sleep(1)
+            driver.execute_script("arguments[0].click();", next_num_btn)
+            
+            log.info("  ➡ Clicked Page %d...", next_page_num)
+            clicked_next = True
+            
+        except Exception:
+            pass
+
+        # 4. Strategy B: Tag-Agnostic Arrow Hunt
+        if not clicked_next:
+            try:
+                arrow_xpath = (
+                    "//ul//*[contains(text(), '>') or contains(text(), '›') or contains(translate(text(), 'NEXT', 'next'), 'next')] | "
+                    "//nav//*[contains(text(), '>') or contains(text(), '›') or contains(translate(text(), 'NEXT', 'next'), 'next')]"
+                )
+                arrow_btn = driver.find_element(By.XPATH, arrow_xpath)
+                
+                parent_class = arrow_btn.find_element(By.XPATH, "./..").get_attribute("class").lower()
+                btn_class = arrow_btn.get_attribute("class").lower()
+                if "disabled" in parent_class or "disabled" in btn_class or arrow_btn.get_attribute("disabled"):
+                    log.info("🏁  'Next' arrow is disabled. Reached the last page.")
+                    break
+                    
+                driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", arrow_btn)
+                time.sleep(1)
+                driver.execute_script("arguments[0].click();", arrow_btn)
+                
+                log.info("  ➡ Clicked 'Next' arrow to reach Page %d...", next_page_num)
+                clicked_next = True
+                
+            except Exception:
+                log.info("🏁  No clickable pagination found. End of catalogue.")
+                break
+
+        if clicked_next:
+            current_page += 1
+            time.sleep(4.5) 
+        else:
+            break
+
+    return ordered_links
+
+    
 # ──────────────────────────────────────────────────────────────────────────────
 # MAIN ORCHESTRATOR
 # ──────────────────────────────────────────────────────────────────────────────
 
-def scrape_swap() -> None:
-    """
-    Main entry point: orchestrates the full scrape from listing pages → detail
-    pages → JSONL output.
-
-    Flow:
-      1. Boot the browser and warm up on the target domain (clears any initial
-         Cloudflare Turnstile before the timed scraping loop starts).
-      2. Iterate through collection pages, collecting product detail URLs.
-      3. For each URL, scrape the detail page and immediately write the record.
-      4. Stop early if a listing page returns zero products (end of catalogue).
-    """
-    log.info("=" * 60)
-    log.info("SWAP.com.bd Scraper  —  target: %s", BASE_COLLECTION_URL)
-    log.info("Output file: %s", OUTPUT_FILE.resolve())
-    log.info("=" * 60)
+def scrape_nexthand() -> None:
+    log.info("=" * 62)
+    log.info("NextHand Scraper v2  —  %s", BRAND_URL)
+    log.info("Output: %s", OUTPUT_FILE.resolve())
+    log.info("=" * 62)
 
     driver = build_driver()
 
     try:
-        # ── Warm-up: Load the homepage first to clear any Turnstile on the root
-        # domain before we start navigating collection pages with a timer running.
-        # ── Warm-up: Load the homepage first
-        # ── Direct Load: Head straight to your target collection page
-        log.info("🌐  Navigating directly to target collection...")
-        driver.get(BASE_COLLECTION_URL)
-        
-        # Give the elements 4 seconds to settle down completely
-        time.sleep(4) 
-        
+        log.info("🌐  Warming up on nexthand.com...")
+        driver.get("https://www.nexthand.com")
         handle_surprise_cloudflare(driver)
-        log.info("✅  Target page ready. Starting page collection scrape...")
+        wait_for_nuxt(driver)
+        time.sleep(4)
+        log.info("✅  Warm-up done. Scraping...")
 
-        total_scraped = 0
+        total_units = total_products = 0
 
-        for page_num in range(1, MAX_PAGES + 1):
+        # 💥 NEW: Get ALL product URLs upfront by driving the pagination UI
+        all_product_urls = scrape_listing_pages(driver)
 
-            # ── Step 1: Get product URLs from the listing page ─────────────
-            product_urls = scrape_listing_page(driver, page_num)
+        if not all_product_urls:
+            log.warning("🏁  No products found at all.")
+            return
 
-            # An empty listing page signals we've passed the last page.
-            if not product_urls:
-                log.info("🏁  No products found on page %d — end of catalogue.", page_num)
-                break
+        log.info("\n── Scraping %d Product Pages ──────────────────────────────", len(all_product_urls))
 
-            # ── Step 2: Scrape each product detail page ────────────────────
-            # ── Step 2: Scrape each product detail page ────────────────────
-            for url in product_urls:
-                try:
-                    # 'records' is now a list, which might contain 1 unit or 5 units
-                    records = scrape_detail_page(driver, url)
-                    
-                    # Append each unit to the JSONL file as a separate line
-                    for record in records:
-                        append_record(OUTPUT_FILE, record)
-                        
-                    total_scraped += len(records)
-                    
-                except Exception as exc:
-                    log.error("  ✘  Failed to scrape %s: %s", url, exc)
+        for url in all_product_urls:
+            try:
+                records = scrape_detail_page(driver, url)
+                total_products += 1
+
+                if records:
+                    for rec in records:
+                        append_record(OUTPUT_FILE, rec)
+                        total_units += 1
+                else:
+                    # Stub so the URL is never silently lost.
                     append_record(OUTPUT_FILE, {
-                        "product_name":       None,
-                        "original_link":      url,
-                        "price":              None,
-                        "physical_condition": None,
-                        "battery_health":     None,
-                        "warranty_status":    None,
-                        "includes_box":       None,
-                        "source_platform":    SOURCE_PLATFORM,
-                        "scraped_at":         datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
-                        "_error":             str(exc),
+                        "product_name": None, "original_link": url,
+                        "price": None, "physical_condition": None,
+                        "battery_health": None, "storage": None, "includes_box": None,
+                        "warranty_status": None, "source_platform": SOURCE_PLATFORM,
+                        "scraped_at": now_utc(), "_note": "no_units_found",
                     })
-                    
-        log.info("\n" + "=" * 60)
-        log.info("✅  Scrape complete.  Total records written: %d", total_scraped)
-        log.info("📄  Output: %s", OUTPUT_FILE.resolve())
-        log.info("=" * 60)
+
+            except Exception as exc:
+                log.error("  ✘  %s: %s", url, exc)
+                append_record(OUTPUT_FILE, {
+                    "product_name": None, "original_link": url,
+                    "price": None, "physical_condition": None,
+                    "battery_health": None, "storage": None, "includes_box": None,
+                    "warranty_status": None, "source_platform": SOURCE_PLATFORM,
+                    "scraped_at": now_utc(), "_error": str(exc),
+                })
+
+        log.info("\n" + "=" * 62)
+        log.info("✅  Done.  Products: %d  |  Unit records: %d", total_products, total_units)
+        log.info("📄  %s", OUTPUT_FILE.resolve())
+        log.info("=" * 62)
 
     finally:
-        # Always quit the driver — even on keyboard interrupt or uncaught error —
-        # to free the Chrome process and its temp profile directory.
         driver.quit()
         log.info("🔒  Browser closed.")
 
-
-# ──────────────────────────────────────────────────────────────────────────────
-# ENTRY POINT
-# ──────────────────────────────────────────────────────────────────────────────
-
 if __name__ == "__main__":
-    scrape_swap()
+    scrape_nexthand()
