@@ -49,7 +49,7 @@ from selenium.common.exceptions import TimeoutException, WebDriverException
 # CONFIGURATION
 # ──────────────────────────────────────────────────────────────────────────────
 
-BRAND_URL    = "https://www.nexthand.com/brand/apple"
+BRAND_URL    = "https://www.nexthand.com/brand/google"
 OUTPUT_FILE  = Path("nexthand_inventory.jsonl")
 MAX_PAGES    = 30
 PAGE_DELAY_RANGE   = (2.5, 5.0)
@@ -105,6 +105,7 @@ def handle_surprise_cloudflare(driver: uc.Chrome) -> bool:
     Detect Cloudflare Turnstile and wait/auto-click through it.
     Uses try/except around driver.title as specified — safe for mid-navigation calls.
     """
+    time.sleep(3)
     cf_indicators = ("Just a moment", "Security Check", "Cloudflare",
                      "Attention Required", "DDoS-Guard")
     try:
