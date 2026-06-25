@@ -15,7 +15,7 @@ export interface Product {
   name: string;
   brand: Brand;
   category: "Phone" | "Laptop" | "Tablet";
-  price: number; // BDT
+  price: number;
   image: string;
   batteryHealth: number;
   boughtMonthsAgo: number;
@@ -23,11 +23,41 @@ export interface Product {
   boxIncluded: boolean;
   condition: Condition;
   aiSummary: string;
-  dealScore: number; // 0-100, higher = better deal
+  dealScore: number;
   listedDaysAgo: number;
-  source: string; // marketplace source
+  source: string;
+  originalLink?: string;
   hot?: boolean;
 }
+
+export function getProductImage(name: string): string {
+  const n = name.toLowerCase();
+  if (n.includes("z fold"))                                         return zfold5;
+  if (n.includes("galaxy tab") || n.includes("tab s"))             return galaxytab;
+  if (n.includes("ipad"))                                           return ipadpro;
+  if (n.includes("macbook air"))                                    return macbookair;
+  if (n.includes("macbook pro") || n.includes("macbook"))          return macbookpro;
+  if (n.includes("iphone 13"))                                      return iphone13;
+  if (n.includes("iphone"))                                         return iphone14pro;
+  if (n.includes("galaxy") || n.includes("samsung"))               return galaxys23;
+  return galaxys23;
+}
+
+export function inferBrand(name: string): Brand {
+  const n = name.toLowerCase();
+  if (n.includes("apple") || n.includes("iphone") || n.includes("ipad") || n.includes("macbook")) return "Apple";
+  return "Samsung";
+}
+
+export function inferCategory(name: string): "Phone" | "Laptop" | "Tablet" {
+  const n = name.toLowerCase();
+  if (n.includes("macbook") || n.includes("laptop") || n.includes("notebook")) return "Laptop";
+  if (n.includes("ipad") || n.includes("galaxy tab") || n.includes("tab s"))   return "Tablet";
+  return "Phone";
+}
+
+export const formatPrice = (n: number) =>
+  "৳ " + new Intl.NumberFormat("en-IN", { maximumFractionDigits: 0 }).format(n);
 
 export const products: Product[] = [
   {
@@ -205,6 +235,3 @@ export const products: Product[] = [
     source: "Daraz",
   },
 ];
-
-export const formatPrice = (n: number) =>
-  "৳ " + new Intl.NumberFormat("en-IN", { maximumFractionDigits: 0 }).format(n);

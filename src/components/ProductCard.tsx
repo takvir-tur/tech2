@@ -1,10 +1,10 @@
-import { Sparkles, BatteryMedium, ShieldCheck, Package } from "lucide-react";
+import { Sparkles, BatteryMedium, ShieldCheck, Package, ExternalLink } from "lucide-react";
 import { type Product, formatPrice } from "@/lib/products";
 import { Badge } from "@/components/ui/badge";
 
 export function ProductCard({ product }: { product: Product }) {
-  return (
-    <article className="group flex flex-col overflow-hidden rounded-2xl border bg-card transition-colors hover:border-accent/60">
+  const inner = (
+    <article className="group flex flex-col overflow-hidden rounded-2xl border bg-card transition-colors hover:border-accent/60 h-full">
       <div className="relative aspect-square overflow-hidden bg-secondary">
         <img
           src={product.image}
@@ -47,6 +47,9 @@ export function ProductCard({ product }: { product: Product }) {
               <Package className="h-3 w-3" /> Box
             </Badge>
           )}
+          <Badge variant="outline" className="gap-1 font-normal text-blue-400 border-blue-400/40">
+            {product.source}
+          </Badge>
         </div>
 
         <div className="mt-auto flex items-start gap-2 rounded-lg border border-ai/30 bg-ai/10 p-2.5">
@@ -56,7 +59,22 @@ export function ProductCard({ product }: { product: Product }) {
             {product.aiSummary}
           </p>
         </div>
+
+        {product.originalLink && (
+          <div className="flex items-center gap-1 text-[11px] text-blue-400 font-medium">
+            <ExternalLink className="h-3 w-3" /> View on {product.source}
+          </div>
+        )}
       </div>
     </article>
   );
+
+  if (product.originalLink) {
+    return (
+      <a href={product.originalLink} target="_blank" rel="noopener noreferrer" className="block h-full">
+        {inner}
+      </a>
+    );
+  }
+  return inner;
 }
