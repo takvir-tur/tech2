@@ -8,6 +8,7 @@ import { Slider } from "@/components/ui/slider";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { products } from "@/lib/products";
 import { ProductCard } from "@/components/ProductCard";
+import { AIAdvisor } from "@/components/AIAdvisor";
 
 export const Route = createFileRoute("/")({
   head: () => ({
@@ -206,6 +207,9 @@ function Home() {
             </div>
           </section>
         )}
+
+        {/* AI ADVISOR */}
+        <AIAdvisor />
 
         {/* ==========================================================
             2. THE THREE MAJOR CATEGORIES ROW PANELS
