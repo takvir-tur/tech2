@@ -15,9 +15,36 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-client = OpenAI(api_key="Give your api key here")
+# ── TOGGLE HERE ──────────────────────────────────────────────────────────────
+# Local testing with Ollama : USE_OLLAMA = True
+# Final submission with OpenAI: USE_OLLAMA = False + set OPENAI_API_KEY
+USE_OLLAMA = True
+
+OPENAI_API_KEY = "paste-your-openai-key-here"
+OLLAMA_MODEL   = "llama3.2"
+OPENAI_MODEL   = "gpt-4o-mini"
+
+if USE_OLLAMA:
+    client = OpenAI(base_url="http://localhost:11434/v1", api_key="ollama")
+    ACTIVE_MODEL = OLLAMA_MODEL
+else:
+    client = OpenAI(api_key=OPENAI_API_KEY)
+    ACTIVE_MODEL = OPENAI_MODEL
+# ─────────────────────────────────────────────────────────────────────────────
 
 INVENTORY_FILE = Path(__file__).parent / "swap_inventory.jsonl"
+
+LAPTOP_KEYWORDS = ["macbook", "laptop", "notebook", "surface pro", "surface book", "dell xps", "hp spectre", "thinkpad"]
+TABLET_KEYWORDS = ["ipad", "galaxy tab", "tab s", "tablet", "mediapad", "surface go"]
+
+
+def detect_category(name: str) -> str:
+    n = name.lower()
+    if any(k in n for k in LAPTOP_KEYWORDS):
+        return "laptop"
+    if any(k in n for k in TABLET_KEYWORDS):
+        return "tablet"
+    return "phone"
 
 
 def load_inventory() -> list[dict]:
@@ -35,69 +62,146 @@ def load_inventory() -> list[dict]:
     return records
 
 
-class UserRequest(BaseModel):
-    desired_model: str
-    budget: int
-    urgency: str
+def deduplicate(items: list[dict]) -> list[dict]:
+    """Remove duplicate entries (same name + price)."""
+    seen: set = set()
+    result = []
+    for item in items:
+        name  = (item.get("product_name") or "").strip()
+        price = item.get("price")
+        if not name or price is None:
+            continue
+        key = (name.lower(), price)
+        if key in seen:
+            continue
+        seen.add(key)
+        result.append(item)
+    return result
 
 
-@app.post("/api/get_recommendation")
-def get_recommendation(req: UserRequest):
+def format_item(item: dict) -> dict:
+    """Return a clean dict for frontend consumption."""
+    return {
+        "name":           item.get("product_name", "Unknown"),
+        "price":          item.get("price"),
+        "battery_health": item.get("battery_health"),
+        "condition":      item.get("physical_condition"),
+        "warranty":       item.get("warranty_status"),
+        "box":            item.get("includes_box"),
+        "source":         item.get("source_platform", "Unknown"),
+        "link":           item.get("original_link", ""),
+        "category":       detect_category(item.get("product_name", "")),
+    }
+
+
+# ─── Endpoints ───────────────────────────────────────────────────────────────
+
+@app.get("/api/products")
+def get_products():
+    """Returns all valid, deduplicated inventory items for the product grid."""
     inventory = load_inventory()
+    unique = deduplicate(inventory)
+    return {"products": [format_item(i) for i in unique]}
 
+
+class AnalyzeRequest(BaseModel):
+    category: str          # "Phone" | "Tablet" | "Laptop"
+    model: str             # e.g. "iPhone 14 Pro"
+    roms: list[str] = []   # e.g. ["256GB", "512GB"]
+    budget: int
+    min_battery: int = 0
+    condition: str = "any"
+    urgency: str = "flexible"
+
+
+@app.post("/api/ai-analyze")
+def ai_analyze(req: AnalyzeRequest):
+    """
+    Returns 3 sections:
+      1. same_model_dealers  – exact model, different sellers
+      2. better_options      – other models within budget, same category
+      3. wait_suggestion     – AI-generated price-trend advice (optional)
+    """
+    inventory = load_inventory()
+    unique = deduplicate(inventory)
+
+    category_key = req.category.lower()   # "phone" | "tablet" | "laptop"
+    clean_model  = req.model.replace(" Base", "").lower()
+
+    # Filter to same category only
+    cat_items = [i for i in unique if detect_category(i.get("product_name", "")) == category_key]
+
+    # ── Section 1: Same model, all dealers ──────────────────────────────────
+    def matches_model(name: str) -> bool:
+        n = name.lower()
+        # All words in clean_model must appear in name
+        return all(word in n for word in clean_model.split())
+
+    same_model = [i for i in cat_items if matches_model(i.get("product_name", ""))]
+
+    # Apply ROM filter if selected
+    if req.roms:
+        same_model = [
+            i for i in same_model
+            if any(rom.lower() in i.get("product_name", "").lower() for rom in req.roms)
+        ] or same_model  # fall back to unfiltered if nothing matches
+
+    # Apply budget ceiling
     budget_ceiling = req.budget * 1.25
-    relevant = [
-        item for item in inventory
-        if item.get("price") and item["price"] <= budget_ceiling
+    same_model_filtered = [i for i in same_model if i.get("price") and i["price"] <= budget_ceiling]
+    if not same_model_filtered:
+        same_model_filtered = same_model  # show anyway if budget is tight
+
+    same_model_filtered.sort(key=lambda x: x.get("price") or 999999)
+
+    # ── Section 2: Better options (different model, same category, in budget) ─
+    other = [
+        i for i in cat_items
+        if not matches_model(i.get("product_name", ""))
+        and i.get("price") and i["price"] <= budget_ceiling
     ]
+    other.sort(key=lambda x: x.get("price") or 999999)
 
-    if not relevant:
-        relevant = inventory[:30]
-
-    inventory_text = ""
-    for i, item in enumerate(relevant[:40], 1):
-        name = item.get("product_name") or "Unknown"
-        price = item.get("price") or "N/A"
-        battery = f"{item['battery_health']}%" if item.get("battery_health") else "Unknown"
-        condition = item.get("physical_condition") or "Unknown"
-        warranty = item.get("warranty_status") or "Unknown"
-        box = "Yes" if item.get("includes_box") else ("No" if item.get("includes_box") is False else "Unknown")
-        link = item.get("original_link") or ""
-        inventory_text += f"{i}. {name} | ৳{price} | Battery: {battery} | Condition: {condition} | Warranty: {warranty} | Box: {box} | Link: {link}\n"
-
-    prompt = f"""You are an expert second-hand smartphone advisor for the Bangladesh market.
-
-User Request:
-- Desired Model: {req.desired_model}
-- Budget: ৳{req.budget}
-- Urgency: {req.urgency}
-
-Available listings from the marketplace:
-{inventory_text}
-
-Your task:
-1. Recommend the TOP 10-15 best listings that match or are close to the user's request. Rank by value (price + battery + condition).
-2. If there is a clearly better phone within 125% of the budget, highlight it as a "Smart Upgrade" with a comparison.
-3. Give a final verdict: BUY NOW, WAIT, or SWITCH MODEL — with a short reason based on price trends, model age, and availability.
-4. Keep each recommendation to 1-2 lines. Be direct and practical.
-
-Format your response as:
-## Top Picks
-(numbered list)
-
-## Smart Upgrade (if applicable)
-(1-2 sentences)
-
-## Verdict: [BUY NOW / WAIT / SWITCH MODEL]
-(2-3 sentences of reasoning)
-"""
-
-    response = client.chat.completions.create(
-        model="gpt-4o-mini",
-        messages=[{"role": "user", "content": prompt}]
+    # ── Section 3: AI wait suggestion ────────────────────────────────────────
+    wait_suggestion = None
+    sample_prices = [i["price"] for i in same_model_filtered[:5] if i.get("price")]
+    price_info = (
+        f"Current prices for {req.model}: " + ", ".join(f"৳{p:,.0f}" for p in sample_prices)
+        if sample_prices else f"No {req.model} listings found yet."
     )
 
-    return {"ai_verdict": response.choices[0].message.content}
+    try:
+        wait_text = client.chat.completions.create(
+            model=ACTIVE_MODEL,
+            messages=[
+                {
+                    "role": "system",
+                    "content": (
+                        "You are a concise second-hand phone market analyst for Bangladesh. "
+                        "Give only a 2-3 sentence price-trend opinion. Never suggest phones of a different category."
+                    )
+                },
+                {
+                    "role": "user",
+                    "content": (
+                        f"User wants: {req.model} | Budget: ৳{req.budget} | Urgency: {req.urgency}\n"
+                        f"{price_info}\n\n"
+                        f"Should the user BUY NOW or WAIT? "
+                        f"Consider model age, typical price depreciation in Bangladesh, and their urgency. "
+                        f"Give a specific timeframe and expected price movement."
+                    )
+                }
+            ]
+        )
+        wait_suggestion = wait_text.choices[0].message.content.strip()
+    except Exception:
+        wait_suggestion = None
+
+    return {
+        "same_model_dealers": [format_item(i) for i in same_model_filtered[:10]],
+        "better_options":     [format_item(i) for i in other[:8]],
+        "wait_suggestion":    wait_suggestion,
+    }
 
 
 @app.get("/api/health")
