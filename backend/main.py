@@ -1,4 +1,5 @@
 import json
+import glob
 from pathlib import Path
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -32,10 +33,10 @@ else:
     ACTIVE_MODEL = OPENAI_MODEL
 # ─────────────────────────────────────────────────────────────────────────────
 
-INVENTORY_FILE = Path(__file__).parent / "swap_inventory.jsonl"
+BACKEND_DIR = Path(__file__).parent
 
-LAPTOP_KEYWORDS = ["macbook", "laptop", "notebook", "surface pro", "surface book", "dell xps", "hp spectre", "thinkpad"]
-TABLET_KEYWORDS = ["ipad", "galaxy tab", "tab s", "tablet", "mediapad", "surface go"]
+LAPTOP_KEYWORDS = ["macbook", "laptop", "notebook", "surface pro", "surface book", "dell xps", "thinkpad"]
+TABLET_KEYWORDS = ["ipad", "galaxy tab", "tab s", "tablet", "mediapad", "surface go", "apple watch"]
 
 
 def detect_category(name: str) -> str:
@@ -48,30 +49,35 @@ def detect_category(name: str) -> str:
 
 
 def load_inventory() -> list[dict]:
-    if not INVENTORY_FILE.exists():
-        return []
+    """Load and merge all *.jsonl files in the backend directory."""
     records = []
-    with open(INVENTORY_FILE, "r", encoding="utf-8") as f:
-        for line in f:
-            line = line.strip()
-            if line:
-                try:
-                    records.append(json.loads(line))
-                except json.JSONDecodeError:
-                    continue
+    for filepath in sorted(BACKEND_DIR.glob("*.jsonl")):
+        with open(filepath, "r", encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if line:
+                    try:
+                        records.append(json.loads(line))
+                    except json.JSONDecodeError:
+                        continue
     return records
 
 
 def deduplicate(items: list[dict]) -> list[dict]:
-    """Remove duplicate entries (same name + price)."""
+    """
+    Keep unique listings by (name + price + source).
+    Same model at different prices from the same source = separate listings.
+    Same model at same price from same source = duplicate, remove.
+    """
     seen: set = set()
     result = []
     for item in items:
-        name  = (item.get("product_name") or "").strip()
-        price = item.get("price")
+        name   = (item.get("product_name") or "").strip()
+        price  = item.get("price")
+        source = (item.get("source_platform") or "").strip()
         if not name or price is None:
             continue
-        key = (name.lower(), price)
+        key = (name.lower(), price, source.lower())
         if key in seen:
             continue
         seen.add(key)
@@ -79,26 +85,41 @@ def deduplicate(items: list[dict]) -> list[dict]:
     return result
 
 
+def normalize_storage(item: dict) -> str | None:
+    """Return a clean storage string like '256GB', '512GB', '1TB'."""
+    raw = item.get("storage") or ""
+    # Handle formats like "8/512GB", "12+256", "256GB", "1TB"
+    for part in raw.replace("+", "/").split("/"):
+        part = part.strip().upper()
+        if "GB" in part or "TB" in part:
+            # Keep only the storage part (e.g., "512GB")
+            digits = "".join(c for c in part if c.isdigit())
+            unit = "TB" if "TB" in part else "GB"
+            if digits:
+                return digits + unit
+    return None
+
+
 def format_item(item: dict) -> dict:
-    """Return a clean dict for frontend consumption."""
     return {
-        "name":           item.get("product_name", "Unknown"),
-        "price":          item.get("price"),
-        "battery_health": item.get("battery_health"),
-        "condition":      item.get("physical_condition"),
-        "warranty":       item.get("warranty_status"),
-        "box":            item.get("includes_box"),
-        "source":         item.get("source_platform", "Unknown"),
-        "link":           item.get("original_link", ""),
-        "category":       detect_category(item.get("product_name", "")),
+        "name":    item.get("product_name", "Unknown"),
+        "price":   item.get("price"),
+        "battery": item.get("battery_health"),
+        "condition": item.get("physical_condition"),
+        "warranty": item.get("warranty_status"),
+        "box":     item.get("includes_box"),
+        "storage": normalize_storage(item),
+        "source":  item.get("source_platform", "Unknown"),
+        "link":    item.get("original_link", ""),
+        "category": detect_category(item.get("product_name", "")),
     }
 
 
-# ─── Endpoints ───────────────────────────────────────────────────────────────
+# ── Endpoints ─────────────────────────────────────────────────────────────────
 
 @app.get("/api/products")
 def get_products():
-    """Returns all valid, deduplicated inventory items for the product grid."""
+    """All valid deduplicated listings for the product grid."""
     inventory = load_inventory()
     unique = deduplicate(inventory)
     return {"products": [format_item(i) for i in unique]}
@@ -116,16 +137,10 @@ class AnalyzeRequest(BaseModel):
 
 @app.post("/api/ai-analyze")
 def ai_analyze(req: AnalyzeRequest):
-    """
-    Returns 3 sections:
-      1. same_model_dealers  – exact model, different sellers
-      2. better_options      – other models within budget, same category
-      3. wait_suggestion     – AI-generated price-trend advice (optional)
-    """
     inventory = load_inventory()
     unique = deduplicate(inventory)
 
-    category_key = req.category.lower()   # "phone" | "tablet" | "laptop"
+    category_key = req.category.lower()
     clean_model  = req.model.replace(" Base", "").lower()
 
     # Filter to same category only
@@ -134,27 +149,27 @@ def ai_analyze(req: AnalyzeRequest):
     # ── Section 1: Same model, all dealers ──────────────────────────────────
     def matches_model(name: str) -> bool:
         n = name.lower()
-        # All words in clean_model must appear in name
         return all(word in n for word in clean_model.split())
 
     same_model = [i for i in cat_items if matches_model(i.get("product_name", ""))]
 
-    # Apply ROM filter if selected
+    # ROM filter — check explicit storage field first, then product name
     if req.roms:
-        same_model = [
-            i for i in same_model
-            if any(rom.lower() in i.get("product_name", "").lower() for rom in req.roms)
-        ] or same_model  # fall back to unfiltered if nothing matches
+        def rom_match(item: dict) -> bool:
+            storage = normalize_storage(item)
+            if storage:
+                return any(rom.upper() == storage for rom in req.roms)
+            return any(rom.lower() in item.get("product_name", "").lower() for rom in req.roms)
+        filtered = [i for i in same_model if rom_match(i)]
+        same_model = filtered if filtered else same_model  # don't empty the list
 
-    # Apply budget ceiling
+    # Budget filter (125% ceiling for section 1)
     budget_ceiling = req.budget * 1.25
-    same_model_filtered = [i for i in same_model if i.get("price") and i["price"] <= budget_ceiling]
-    if not same_model_filtered:
-        same_model_filtered = same_model  # show anyway if budget is tight
+    same_budget = [i for i in same_model if i.get("price") and i["price"] <= budget_ceiling]
+    same_model_out = same_budget if same_budget else same_model
+    same_model_out.sort(key=lambda x: x.get("price") or 999999)
 
-    same_model_filtered.sort(key=lambda x: x.get("price") or 999999)
-
-    # ── Section 2: Better options (different model, same category, in budget) ─
+    # ── Section 2: Better options (different model, same category) ──────────
     other = [
         i for i in cat_items
         if not matches_model(i.get("product_name", ""))
@@ -164,21 +179,23 @@ def ai_analyze(req: AnalyzeRequest):
 
     # ── Section 3: AI wait suggestion ────────────────────────────────────────
     wait_suggestion = None
-    sample_prices = [i["price"] for i in same_model_filtered[:5] if i.get("price")]
+    sample_prices = [i["price"] for i in same_model_out[:5] if i.get("price")]
     price_info = (
-        f"Current prices for {req.model}: " + ", ".join(f"৳{p:,.0f}" for p in sample_prices)
-        if sample_prices else f"No {req.model} listings found yet."
+        "Current prices for {}: {}".format(
+            req.model, ", ".join(f"৳{p:,.0f}" for p in sample_prices)
+        ) if sample_prices else f"No {req.model} listings found yet."
     )
 
     try:
-        wait_text = client.chat.completions.create(
+        resp = client.chat.completions.create(
             model=ACTIVE_MODEL,
             messages=[
                 {
                     "role": "system",
                     "content": (
                         "You are a concise second-hand phone market analyst for Bangladesh. "
-                        "Give only a 2-3 sentence price-trend opinion. Never suggest phones of a different category."
+                        "Give only a 2-3 sentence price-trend opinion. "
+                        "Never suggest devices of a different category."
                     )
                 },
                 {
@@ -188,17 +205,17 @@ def ai_analyze(req: AnalyzeRequest):
                         f"{price_info}\n\n"
                         f"Should the user BUY NOW or WAIT? "
                         f"Consider model age, typical price depreciation in Bangladesh, and their urgency. "
-                        f"Give a specific timeframe and expected price movement."
+                        f"Give a specific timeframe and expected price movement if they wait."
                     )
                 }
             ]
         )
-        wait_suggestion = wait_text.choices[0].message.content.strip()
+        wait_suggestion = resp.choices[0].message.content.strip()
     except Exception:
         wait_suggestion = None
 
     return {
-        "same_model_dealers": [format_item(i) for i in same_model_filtered[:10]],
+        "same_model_dealers": [format_item(i) for i in same_model_out[:12]],
         "better_options":     [format_item(i) for i in other[:8]],
         "wait_suggestion":    wait_suggestion,
     }
@@ -207,4 +224,9 @@ def ai_analyze(req: AnalyzeRequest):
 @app.get("/api/health")
 def health():
     inventory = load_inventory()
-    return {"status": "ok", "inventory_count": len(inventory)}
+    unique = deduplicate(inventory)
+    sources = {}
+    for i in unique:
+        s = i.get("source_platform", "Unknown")
+        sources[s] = sources.get(s, 0) + 1
+    return {"status": "ok", "total": len(unique), "by_source": sources}
