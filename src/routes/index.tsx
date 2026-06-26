@@ -23,10 +23,11 @@ export const Route = createFileRoute("/")({
 interface InventoryItem {
   name: string;
   price: number | null;
-  battery_health: number | null;
+  battery: number | null;
   condition: string | null;
   warranty: string | null;
   box: boolean | null;
+  storage: string | null;
   source: string;
   link: string;
   category: string;
@@ -42,7 +43,7 @@ function mapToProduct(item: InventoryItem, index: number): Product {
     category,
     price: item.price ?? 0,
     image: getProductImage(item.name),
-    batteryHealth: item.battery_health ?? 85,
+    batteryHealth: item.battery ?? 85,
     boughtMonthsAgo: 6,
     warrantyMonths: item.warranty ? 3 : 0,
     boxIncluded: item.box ?? false,
