@@ -5,10 +5,11 @@ import { Badge } from "@/components/ui/badge";
 export interface DealItem {
   name: string;
   price: number | null;
-  battery_health: number | null;
+  battery: number | null;
   condition: string | null;
   warranty: string | null;
   box: boolean | null;
+  storage: string | null;
   source: string;
   link: string;
   category: string;
@@ -42,9 +43,14 @@ function DealCard({ item }: { item: DealItem }) {
       </div>
 
       <div className="flex flex-wrap gap-1.5">
-        {item.battery_health != null && (
+        {item.battery != null && (
           <Badge variant="outline" className="gap-1 text-[10px] border-slate-600 text-slate-300">
-            <BatteryMedium className="h-3 w-3" /> {item.battery_health}%
+            <BatteryMedium className="h-3 w-3" /> {item.battery}%
+          </Badge>
+        )}
+        {item.storage && (
+          <Badge variant="outline" className="gap-1 text-[10px] border-slate-600 text-slate-300">
+            {item.storage}
           </Badge>
         )}
         {item.warranty && (
