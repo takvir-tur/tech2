@@ -9,64 +9,58 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
-import { Route as CategoryRouteImport } from './routes/$category'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as CategoryIndexRouteImport } from './routes/$category.index'
 import { Route as CategoryBrandRouteImport } from './routes/$category.$brand'
 
-const CategoryRoute = CategoryRouteImport.update({
-  id: '/$category',
-  path: '/$category',
-  getParentRoute: () => rootRouteImport,
-} as any)
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const CategoryIndexRoute = CategoryIndexRouteImport.update({
+  id: '/$category/',
+  path: '/$category/',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const CategoryBrandRoute = CategoryBrandRouteImport.update({
-  id: '/$brand',
-  path: '/$brand',
-  getParentRoute: () => CategoryRoute,
+  id: '/$category/$brand',
+  path: '/$category/$brand',
+  getParentRoute: () => rootRouteImport,
 } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
-  '/$category': typeof CategoryRouteWithChildren
   '/$category/$brand': typeof CategoryBrandRoute
+  '/$category/': typeof CategoryIndexRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
-  '/$category': typeof CategoryRouteWithChildren
   '/$category/$brand': typeof CategoryBrandRoute
+  '/$category': typeof CategoryIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
-  '/$category': typeof CategoryRouteWithChildren
   '/$category/$brand': typeof CategoryBrandRoute
+  '/$category/': typeof CategoryIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/$category' | '/$category/$brand'
+  fullPaths: '/' | '/$category/$brand' | '/$category/'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/$category' | '/$category/$brand'
-  id: '__root__' | '/' | '/$category' | '/$category/$brand'
+  to: '/' | '/$category/$brand' | '/$category'
+  id: '__root__' | '/' | '/$category/$brand' | '/$category/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
-  CategoryRoute: typeof CategoryRouteWithChildren
+  CategoryBrandRoute: typeof CategoryBrandRoute
+  CategoryIndexRoute: typeof CategoryIndexRoute
 }
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
-    '/$category': {
-      id: '/$category'
-      path: '/$category'
-      fullPath: '/$category'
-      preLoaderRoute: typeof CategoryRouteImport
-      parentRoute: typeof rootRouteImport
-    }
     '/': {
       id: '/'
       path: '/'
@@ -74,31 +68,27 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/$category/': {
+      id: '/$category/'
+      path: '/$category'
+      fullPath: '/$category/'
+      preLoaderRoute: typeof CategoryIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/$category/$brand': {
       id: '/$category/$brand'
-      path: '/$brand'
+      path: '/$category/$brand'
       fullPath: '/$category/$brand'
       preLoaderRoute: typeof CategoryBrandRouteImport
-      parentRoute: typeof CategoryRoute
+      parentRoute: typeof rootRouteImport
     }
   }
 }
 
-interface CategoryRouteChildren {
-  CategoryBrandRoute: typeof CategoryBrandRoute
-}
-
-const CategoryRouteChildren: CategoryRouteChildren = {
-  CategoryBrandRoute: CategoryBrandRoute,
-}
-
-const CategoryRouteWithChildren = CategoryRoute._addFileChildren(
-  CategoryRouteChildren,
-)
-
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
-  CategoryRoute: CategoryRouteWithChildren,
+  CategoryBrandRoute: CategoryBrandRoute,
+  CategoryIndexRoute: CategoryIndexRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

@@ -1,6 +1,6 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useMemo, useState } from "react";
-import { ChevronLeft, SlidersHorizontal, Check, X, Sparkles, AlertCircle, ShoppingBag } from "lucide-react";
+import { ChevronLeft, SlidersHorizontal, X, Sparkles, AlertCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Slider } from "@/components/ui/slider";
@@ -8,11 +8,13 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { products } from "@/lib/products";
 import { ProductCard } from "@/components/ProductCard";
 
+// Clean routing definition
 export const Route = createFileRoute("/$category/$brand")({
   component: BrandProductDirectory,
 });
 
 function BrandProductDirectory() {
+  // Router extracts both parameter tokens from the URL path
   const { category, brand } = Route.useParams();
 
   // Core Search & Filter States
@@ -140,7 +142,7 @@ function BrandProductDirectory() {
             )}
           </div>
 
-          {/* RIGHT SIDE PANEL: Sticky high-contrast filter control dashboard */}
+          {/* RIGHT SIDE PANEL: Sticky filter control dashboard */}
           <aside className="lg:col-span-4 order-1 lg:order-2 lg:sticky lg:top-20 bg-slate-800 border-2 border-slate-900 rounded-2xl p-6 space-y-6 shadow-xl text-white">
             <div className="flex items-center gap-2 border-b border-slate-700 pb-3">
               <SlidersHorizontal className="h-4 w-4 text-blue-400" />
@@ -199,9 +201,7 @@ function BrandProductDirectory() {
           </aside>
         </div>
 
-        {/* ==========================================================
-            5. DOWNSIDE AI SEARCH RECOMMENDATIONS SYSTEM CONSOLE
-            ========================================================== */}
+        {/* AI Recommendations System Console */}
         <section className="bg-gradient-to-br from-slate-900 via-blue-950 to-slate-900 text-white rounded-3xl p-6 md:p-8 border-2 border-blue-500/30 shadow-xl space-y-4">
           <div className="flex items-center gap-2.5">
             <div className="p-2 bg-blue-500/20 rounded-xl text-blue-400 border border-blue-500/30">

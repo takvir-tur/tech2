@@ -3,7 +3,7 @@ import { useMemo } from "react";
 import { ChevronLeft, Layers } from "lucide-react";
 import { products, inferBrand } from "@/lib/products";
 
-export const Route = createFileRoute("/$category")({
+export const Route = createFileRoute("/$category/")({
   component: CategoryBrandSelector,
 });
 
