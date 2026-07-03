@@ -1,80 +1,97 @@
-import { Sparkles, BatteryMedium, ShieldCheck, Package, ExternalLink } from "lucide-react";
-import { type Product, formatPrice } from "@/lib/products";
-import { Badge } from "@/components/ui/badge";
+import { Product } from "@/lib/products";
+import { Flame, ShieldCheck, ShoppingCart, Box } from "lucide-react";
 
-export function ProductCard({ product }: { product: Product }) {
-  const inner = (
-    <article className="group flex flex-col overflow-hidden rounded-2xl border bg-card transition-colors hover:border-accent/60 h-full">
-      <div className="relative aspect-square overflow-hidden bg-secondary">
+interface ProductCardProps {
+  product: Product;
+}
+
+export function ProductCard({ product }: ProductCardProps) {
+  return (
+    <div className="group relative flex flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm transition-all duration-300 hover:-translate-y-1 hover:border-blue-400 hover:shadow-md">
+      
+      {/* Top Graphic Card Header & Badging Context */}
+      <div className="relative aspect-[4/3] w-full overflow-hidden bg-slate-100 border-b border-slate-100">
         <img
           src={product.image}
           alt={product.name}
-          loading="lazy"
-          width={800}
-          height={800}
           className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105"
         />
-        {product.hot && (
-          <span className="absolute left-3 top-3 rounded-full bg-accent px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wider text-accent-foreground">
-            Hot
+        
+        {/* Dynamic Condition Indicator Tag */}
+        <div className="absolute top-3 left-3">
+          <span className={`inline-block px-2.5 py-1 text-[10px] font-black uppercase tracking-wider rounded-full shadow-sm text-white ${
+            product.condition === "Mint" ? "bg-emerald-600" :
+            product.condition === "Good" ? "bg-blue-600" : "bg-amber-600"
+          }`}>
+            {product.condition} Grade
           </span>
-        )}
-        <span className="absolute right-3 top-3 rounded-full bg-background/70 px-2.5 py-1 text-[10px] font-medium uppercase tracking-wider text-foreground backdrop-blur">
-          {product.condition}
-        </span>
-      </div>
-
-      <div className="flex flex-1 flex-col gap-3 p-4">
-        <div className="flex items-start justify-between gap-3">
-          <div className="min-w-0">
-            <p className="text-[11px] uppercase tracking-wider text-muted-foreground">{product.brand}</p>
-            <h3 className="mt-0.5 truncate text-base font-semibold text-foreground">{product.name}</h3>
-          </div>
-          <p className="shrink-0 text-base font-semibold tabular-nums">{formatPrice(product.price)}</p>
         </div>
 
-        <div className="flex flex-wrap gap-1.5 text-[11px] text-muted-foreground">
-          <Badge variant="outline" className="gap-1 font-normal">
-            <BatteryMedium className="h-3 w-3" /> {product.batteryHealth}%
-          </Badge>
-          {product.warrantyMonths > 0 && (
-            <Badge variant="outline" className="gap-1 font-normal">
-              <ShieldCheck className="h-3 w-3" /> {product.warrantyMonths}mo
-            </Badge>
-          )}
-          {product.boxIncluded && (
-            <Badge variant="outline" className="gap-1 font-normal">
-              <Package className="h-3 w-3" /> Box
-            </Badge>
-          )}
-          <Badge variant="outline" className="gap-1 font-normal text-blue-400 border-blue-400/40">
-            {product.source}
-          </Badge>
-        </div>
-
-        <div className="mt-auto flex items-start gap-2 rounded-lg border border-ai/30 bg-ai/10 p-2.5">
-          <Sparkles className="mt-0.5 h-3.5 w-3.5 shrink-0 text-ai" />
-          <p className="text-xs leading-relaxed text-muted-foreground">
-            <span className="font-medium text-ai">AI · </span>
-            {product.aiSummary}
-          </p>
-        </div>
-
-        {product.originalLink && (
-          <div className="flex items-center gap-1 text-[11px] text-blue-400 font-medium">
-            <ExternalLink className="h-3 w-3" /> View on {product.source}
+        {/* Hot Deal Overlay Badge Indicator */}
+        {product.hot && (
+          <div className="absolute top-3 right-3 bg-red-500 text-white p-1.5 rounded-full shadow-md animate-bounce">
+            <Flame className="h-3.5 w-3.5 fill-current" />
           </div>
         )}
       </div>
-    </article>
+
+      {/* Main Metadata Text Block Content */}
+      <div className="flex flex-1 flex-col p-4 space-y-3">
+        <div>
+          <span className="text-[10px] font-black tracking-widest text-blue-600 uppercase">
+            {product.brand} Pipeline Item
+          </span>
+          <h4 className="font-black text-slate-900 tracking-tight text-base mt-0.5 line-clamp-1 group-hover:text-blue-600 transition">
+            {product.name}
+          </h4>
+        </div>
+
+        {/* AI Insight Snippet Block quote */}
+        <p className="text-xs italic text-slate-500 font-medium line-clamp-2 leading-relaxed bg-slate-50 border border-slate-100 p-2 rounded-lg">
+          "{product.aiSummary}"
+        </p>
+
+        {/* Technical Specs Array Grid info */}
+        <div className="grid grid-cols-2 gap-2 text-[11px] font-bold text-slate-600 bg-slate-50/60 p-2 rounded-lg border border-slate-100 font-mono">
+          <div className="flex items-center gap-1">
+            🔋 <span className="text-slate-900 font-black">{product.batteryHealth}%</span> Health
+          </div>
+          <div className="flex items-center gap-1">
+            <Box className="h-3 w-3 text-slate-400" /> 
+            <span className="text-slate-900 font-black">{product.boxIncluded ? "Box" : "Loose"}</span> Included
+          </div>
+          <div className="flex items-center gap-1 col-span-2">
+            <ShieldCheck className="h-3 w-3 text-emerald-600" />
+            Warranty: <span className="text-slate-900 font-black">{product.warrantyMonths > 0 ? `${product.warrantyMonths} months` : "Expired"}</span>
+          </div>
+        </div>
+
+        {/* Card Pricing and Action Footer Row Node */}
+        <div className="pt-2 border-t border-slate-100 flex items-center justify-between mt-auto">
+          <div>
+            <span className="block text-[9px] font-black text-slate-400 uppercase tracking-wider">Indexed Price</span>
+            <span className="text-lg font-black text-slate-900 font-mono tracking-tight">
+              ৳{product.price.toLocaleString()}
+            </span>
+          </div>
+          
+          <div className="text-right">
+            <span className="block text-[9px] font-black text-slate-400 uppercase tracking-wider">Deal Score</span>
+            <span className={`inline-block text-xs font-black px-2 py-0.5 rounded ${
+              product.dealScore >= 80 ? "bg-emerald-50 text-emerald-700 border border-emerald-200" :
+              product.dealScore >= 70 ? "bg-blue-50 text-blue-700 border border-blue-200" :
+              "bg-slate-50 text-slate-700 border border-slate-200"
+            }`}>
+              {product.dealScore}/100
+            </span>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-1.5 text-[10px] font-bold text-slate-400 pt-1 border-t border-dashed border-slate-100">
+          <ShoppingCart className="h-3 w-3" /> Source: <span className="text-blue-500 font-extrabold">{product.source}</span>
+        </div>
+
+      </div>
+    </div>
   );
-
-  if (product.originalLink) {
-    return (
-      <a href={product.originalLink} target="_blank" rel="noopener noreferrer" className="block h-full">
-        {inner}
-      </a>
-    );
-  }
-  return inner;
 }
