@@ -1,15 +1,31 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useMemo, useState } from "react";
-import { Search, Flame, Smartphone, Tablet, Laptop, ChevronLeft, ChevronRight } from "lucide-react";
+import { useQuery } from "@tanstack/react-query";
+import {
+  Search,
+  Flame,
+  Smartphone,
+  Tablet,
+  Laptop,
+  ChevronLeft,
+  ChevronRight,
+  ExternalLink,
+  Loader2,
+} from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { products } from "@/lib/products";
+import { fetchLiveProducts } from "@/lib/api";
+import { enrichProduct, formatPrice } from "@/lib/products";
 
 export const Route = createFileRoute("/")({
   head: () => ({
     meta: [
       { title: "Tech 2 — Premium second-hand tech, aggregated" },
-      { name: "description", content: "Find verified second-hand iPhones, iPads, MacBooks and Samsung devices with AI-summarized condition reports." },
+      {
+        name: "description",
+        content:
+          "Find verified second-hand iPhones, iPads, MacBooks and Samsung devices with AI-summarized condition reports.",
+      },
     ],
   }),
   component: Home,
@@ -18,29 +34,42 @@ export const Route = createFileRoute("/")({
 function Home() {
   const [query, setQuery] = useState("");
 
-  // Hot Deals Carousel Configuration
-  const hotProducts = useMemo(() => products.filter((p) => p.hot), []);
-  const [hotIndex, setHotIndex] = useState(0);
+  const {
+    data: rawProducts,
+    isLoading,
+    isError,
+  } = useQuery({
+    queryKey: ["live-products"],
+    queryFn: fetchLiveProducts,
+    staleTime: 60_000,
+  });
 
+  const products = useMemo(() => (rawProducts ?? []).map((p, i) => enrichProduct(p, i)), [rawProducts]);
+
+  // "Hot deals" = the priciest, verifiably-priced live listings — a stand-in
+  // for a deal-score, since the real scraped data has no such field.
+  const hotProducts = useMemo(() => {
+    return [...products]
+      .filter((p) => p.price != null)
+      .sort((a, b) => (b.price ?? 0) - (a.price ?? 0))
+      .slice(0, 5);
+  }, [products]);
+
+  const [hotIndex, setHotIndex] = useState(0);
   const nextHotDeal = () => setHotIndex((prev) => (prev + 1) % hotProducts.length);
   const prevHotDeal = () => setHotIndex((prev) => (prev - 1 + hotProducts.length) % hotProducts.length);
+  const activeHotProduct = hotProducts[hotIndex];
 
   const searchSuggestions = useMemo(() => {
     if (!query.trim()) return [];
+    const q = query.toLowerCase();
     return products
-      .filter(
-        (p) =>
-          p.name.toLowerCase().includes(query.toLowerCase()) ||
-          p.brand.toLowerCase().includes(query.toLowerCase())
-      )
-      .slice(0, 5);
-  }, [query]);
-
-  const activeHotProduct = hotProducts[hotIndex];
+      .filter((p) => p.name.toLowerCase().includes(q) || p.brand.toLowerCase().includes(q))
+      .slice(0, 6);
+  }, [query, products]);
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50/40 to-rose-50/50 font-sans text-slate-900 antialiased selection:bg-rose-200">
-      
       {/* High Visibility Header */}
       <header className="sticky top-0 z-40 w-full border-b border-blue-100 bg-slate-900/85 backdrop-blur shadow-sm">
         <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-4 sm:px-6 lg:px-8">
@@ -51,24 +80,37 @@ function Home() {
             <Search className="absolute top-1/2 left-4 h-4 w-4 -translate-y-1/2 text-slate-400" />
             <Input
               type="search"
-              placeholder="Search aggregated live tech deals..."
+              placeholder="Search live scraped listings..."
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               className="pl-10 rounded-full bg-slate-100/80 border-slate-700/60 focus-visible:ring-2 focus-visible:ring-blue-500 font-medium text-slate-900"
             />
-            {query && searchSuggestions.length > 0 && (
+            {query && (
               <div className="absolute top-full mt-2 w-full bg-slate-800 border rounded-xl shadow-lg z-50 overflow-hidden">
-                {searchSuggestions.map((product) => (
-                  <div
-                    key={product.id}
-                    className="w-full px-4 py-3 text-left bg-slate-800 border-b border-slate-700 last:border-0 text-white"
-                  >
-                    <div className="font-semibold">{product.name}</div>
-                    <div className="text-xs text-slate-400">
-                      ৳{product.price.toLocaleString()}
-                    </div>
-                  </div>
-                ))}
+                {isLoading ? (
+                  <div className="px-4 py-3 text-sm text-slate-300">Loading live listings…</div>
+                ) : searchSuggestions.length === 0 ? (
+                  <div className="px-4 py-3 text-sm text-slate-400">No matching listings found.</div>
+                ) : (
+                  searchSuggestions.map((product) => (
+                    <a
+                      key={product.id}
+                      href={product.link}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      onClick={() => setQuery("")}
+                      className="flex w-full items-center justify-between gap-3 border-b border-slate-700 bg-slate-800 px-4 py-3 text-left text-white transition last:border-0 hover:bg-slate-700"
+                    >
+                      <div>
+                        <div className="font-semibold">{product.name}</div>
+                        <div className="text-xs text-slate-400">
+                          {formatPrice(product.price)} · {product.source}
+                        </div>
+                      </div>
+                      <ExternalLink className="h-3.5 w-3.5 shrink-0 text-blue-400" />
+                    </a>
+                  ))
+                )}
               </div>
             )}
           </div>
@@ -76,18 +118,32 @@ function Home() {
       </header>
 
       <main className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8 space-y-12">
-        
+        {isError && (
+          <div className="rounded-2xl border-2 border-dashed border-rose-300 bg-rose-50 p-6 text-center text-sm font-bold text-rose-600">
+            Couldn't reach the live inventory API. Make sure the backend is running (
+            <code className="font-mono">cd backend && uvicorn main:app --reload --port 8000</code>).
+          </div>
+        )}
+
+        {isLoading && (
+          <div className="flex items-center justify-center gap-2 rounded-2xl border-2 border-dashed border-slate-300 bg-white p-10 text-slate-500">
+            <Loader2 className="h-5 w-5 animate-spin" /> Loading live scraped listings…
+          </div>
+        )}
+
         {/* ==========================================================
-            1. HOT DEALS CAROUSEL SPOTLIGHT
+            1. HOT DEALS CAROUSEL SPOTLIGHT (live data)
             ========================================================== */}
         {activeHotProduct && (
           <section className="relative overflow-hidden rounded-3xl border-2 border-amber-400 bg-gradient-to-br from-amber-400/20 via-white to-rose-400/10 p-6 md:p-8 shadow-xl shadow-amber-500/10 transition-all duration-300">
             <div className="flex items-center justify-between mb-5">
               <div className="flex items-center gap-2">
                 <span className="flex items-center gap-1.5 rounded-full bg-gradient-to-r from-red-500 via-orange-500 to-amber-500 px-4 py-1.5 text-xs font-black uppercase tracking-widest text-white shadow-md">
-                  <Flame className="h-4 w-4 fill-current animate-bounce" /> Lucrative Hot Deal Spotlight
+                  <Flame className="h-4 w-4 fill-current animate-bounce" /> Premium Live Picks
                 </span>
-                <span className="text-xs text-slate-600 font-bold font-mono">({hotIndex + 1}/{hotProducts.length})</span>
+                <span className="text-xs text-slate-600 font-bold font-mono">
+                  ({hotIndex + 1}/{hotProducts.length})
+                </span>
               </div>
             </div>
 
@@ -98,35 +154,57 @@ function Home() {
                   alt={activeHotProduct.name}
                   className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105"
                 />
-                <div className="absolute top-3 right-3 bg-red-500 text-white font-extrabold text-[10px] uppercase px-2.5 py-1 rounded-full shadow-md">
-                  {activeHotProduct.condition} Grade
-                </div>
+                {activeHotProduct.condition && (
+                  <div className="absolute top-3 right-3 bg-red-500 text-white font-extrabold text-[10px] uppercase px-2.5 py-1 rounded-full shadow-md">
+                    {activeHotProduct.condition}
+                  </div>
+                )}
               </div>
 
               <div className="md:col-span-8 space-y-4 flex flex-col justify-center">
                 <div className="flex flex-wrap items-baseline justify-between gap-2 border-b border-orange-100 pb-2">
                   <div>
-                    <span className="text-[11px] font-black uppercase tracking-widest text-rose-500">{activeHotProduct.brand} Highlight</span>
-                    <h2 className="text-2xl md:text-3xl font-black text-slate-900 tracking-tight">{activeHotProduct.name}</h2>
+                    <span className="text-[11px] font-black uppercase tracking-widest text-rose-500">
+                      {activeHotProduct.brand} Highlight
+                    </span>
+                    <h2 className="text-2xl md:text-3xl font-black text-slate-900 tracking-tight">
+                      {activeHotProduct.name}
+                    </h2>
                   </div>
                   <div className="text-right">
-                    <p className="text-3xl font-black text-orange-600 font-mono tracking-tight">৳{activeHotProduct.price.toLocaleString()}</p>
-                    <span className="inline-block text-[11px] font-extrabold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-200">
-                      Deal Quality: {activeHotProduct.dealScore}/100
-                    </span>
+                    <p className="text-3xl font-black text-orange-600 font-mono tracking-tight">
+                      {formatPrice(activeHotProduct.price)}
+                    </p>
+                    {activeHotProduct.storage && (
+                      <span className="inline-block text-[11px] font-extrabold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-200">
+                        {activeHotProduct.storage}
+                      </span>
+                    )}
                   </div>
-                </div>
-
-                <div className="p-3.5 rounded-xl border border-blue-100 bg-blue-50/80 relative">
-                  <span className="absolute -top-2.5 left-4 px-2 bg-slate-900 text-[9px] font-black tracking-widest text-blue-400 border border-blue-100 rounded-full uppercase">AI Market Evaluator</span>
-                  <p className="text-sm font-semibold italic text-slate-800 leading-relaxed">"{activeHotProduct.aiSummary}"</p>
                 </div>
 
                 <div className="flex flex-wrap gap-4 text-xs font-bold text-slate-600 bg-slate-100 p-2.5 rounded-lg border border-slate-200">
-                  <div>🔋 Battery Health: <span className="text-slate-900 font-black">{activeHotProduct.batteryHealth}%</span></div>
-                  <div>🛒 Aggregated From: <span className="text-blue-600 font-extrabold">{activeHotProduct.source}</span></div>
-                  <div>⏰ Time Listed: <span className="text-slate-900 font-black">{activeHotProduct.listedDaysAgo} days ago</span></div>
+                  <div>
+                    🔋 Battery: <span className="text-slate-900 font-black">{activeHotProduct.battery != null ? `${activeHotProduct.battery}%` : "N/A"}</span>
+                  </div>
+                  <div>
+                    🛒 Source: <span className="text-blue-600 font-extrabold">{activeHotProduct.source}</span>
+                  </div>
+                  <div>
+                    📦 Box: <span className="text-slate-900 font-black">{activeHotProduct.box === true ? "Included" : activeHotProduct.box === false ? "Not included" : "N/A"}</span>
+                  </div>
                 </div>
+
+                {activeHotProduct.link && (
+                  <a
+                    href={activeHotProduct.link}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-2 self-start rounded-xl bg-blue-600 px-5 py-2.5 text-sm font-black text-white shadow-md transition hover:bg-blue-700"
+                  >
+                    View on {activeHotProduct.source} <ExternalLink className="h-4 w-4" />
+                  </a>
+                )}
               </div>
             </div>
 
@@ -147,21 +225,27 @@ function Home() {
         <section className="space-y-4">
           <div>
             <h3 className="text-xs font-black uppercase tracking-widest text-blue-600">Step 1: Choose Core Pipeline</h3>
-            <p className="text-sm text-slate-500 font-medium">Select a category to explore database-verified scraped items.</p>
+            <p className="text-sm text-slate-500 font-medium">Select a category to explore live scraped listings.</p>
           </div>
-          
+
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <Link
               to="/$category"
               params={{ category: "Phone" }}
               className="relative h-32 overflow-hidden rounded-2xl border border-slate-700 bg-slate-800 text-left transition-all p-6 flex items-end group shadow-sm hover:border-blue-400 hover:shadow-md"
             >
-              <img src="https://images.unsplash.com/photo-1511707171634-5f897ff02aa9?w=600&auto=format&fit=crop&q=60" alt="Phones" className="absolute inset-0 h-full w-full object-cover opacity-25 group-hover:scale-105 transition-transform duration-500" />
+              <img
+                src="https://images.unsplash.com/photo-1511707171634-5f897ff02aa9?w=600&auto=format&fit=crop&q=60"
+                alt="Phones"
+                className="absolute inset-0 h-full w-full object-cover opacity-25 group-hover:scale-105 transition-transform duration-500"
+              />
               <div className="relative z-10 flex items-center gap-3">
-                <div className="p-3 bg-blue-500 rounded-xl text-white shadow-sm"><Smartphone className="h-5 w-5" /></div>
+                <div className="p-3 bg-blue-500 rounded-xl text-white shadow-sm">
+                  <Smartphone className="h-5 w-5" />
+                </div>
                 <div>
                   <h4 className="text-lg font-black text-white">Smartphones</h4>
-                  <p className="text-xs font-bold text-slate-300">Explore iPhones & premium Galaxy lines</p>
+                  <p className="text-xs font-bold text-slate-300">iPhones, Galaxy, Pixel & more</p>
                 </div>
               </div>
             </Link>
@@ -171,9 +255,15 @@ function Home() {
               params={{ category: "Tablet" }}
               className="relative h-32 overflow-hidden rounded-2xl border border-slate-700 bg-slate-800 text-left transition-all p-6 flex items-end group shadow-sm hover:border-rose-400 hover:shadow-md"
             >
-              <img src="https://images.unsplash.com/photo-1544244015-0df4b3ffc6b0?w=600&auto=format&fit=crop&q=60" alt="Tablets" className="absolute inset-0 h-full w-full object-cover opacity-25 group-hover:scale-105 transition-transform duration-500" />
+              <img
+                src="https://images.unsplash.com/photo-1544244015-0df4b3ffc6b0?w=600&auto=format&fit=crop&q=60"
+                alt="Tablets"
+                className="absolute inset-0 h-full w-full object-cover opacity-25 group-hover:scale-105 transition-transform duration-500"
+              />
               <div className="relative z-10 flex items-center gap-3">
-                <div className="p-3 bg-rose-500 rounded-xl text-white shadow-sm"><Tablet className="h-5 w-5" /></div>
+                <div className="p-3 bg-rose-500 rounded-xl text-white shadow-sm">
+                  <Tablet className="h-5 w-5" />
+                </div>
                 <div>
                   <h4 className="text-lg font-black text-white">Tablets & iPads</h4>
                   <p className="text-xs font-bold text-slate-300">High performance productivity monitors</p>
@@ -187,9 +277,15 @@ function Home() {
             params={{ category: "Laptop" }}
             className="relative w-full h-28 overflow-hidden rounded-2xl border border-slate-700 bg-slate-800 text-left transition-all p-6 flex items-end group shadow-sm hover:border-amber-400 hover:shadow-md block"
           >
-            <img src="https://images.unsplash.com/photo-1517336714731-489689fd1ca8?w=1200&auto=format&fit=crop&q=60" alt="Laptops" className="absolute inset-0 h-full w-full object-cover opacity-20 group-hover:scale-105 transition-transform duration-500" />
+            <img
+              src="https://images.unsplash.com/photo-1517336714731-489689fd1ca8?w=1200&auto=format&fit=crop&q=60"
+              alt="Laptops"
+              className="absolute inset-0 h-full w-full object-cover opacity-20 group-hover:scale-105 transition-transform duration-500"
+            />
             <div className="relative z-10 flex items-center gap-3">
-              <div className="p-3 bg-amber-500 rounded-xl text-white shadow-sm"><Laptop className="h-5 w-5" /></div>
+              <div className="p-3 bg-amber-500 rounded-xl text-white shadow-sm">
+                <Laptop className="h-5 w-5" />
+              </div>
               <div>
                 <h4 className="text-lg font-black text-white">Premium Laptops</h4>
                 <p className="text-xs font-bold text-slate-300">Aggregated developer workstations & MacBooks</p>
@@ -197,11 +293,10 @@ function Home() {
             </div>
           </Link>
         </section>
-
       </main>
 
       <footer className="border-t border-slate-200 py-8 text-center text-xs font-bold text-slate-500 tracking-wider uppercase font-mono mt-12">
-        Tech 2 Core Engine Portal // Phase 1 Complete.
+        Tech 2 Core Engine Portal // Live Data Connected.
       </footer>
     </div>
   );

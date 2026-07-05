@@ -1,76 +1,115 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useMemo, useState } from "react";
-import { ChevronLeft, SlidersHorizontal, X, Sparkles, AlertCircle } from "lucide-react";
+import { useQuery, useMutation } from "@tanstack/react-query";
+import { ChevronLeft, SlidersHorizontal, X, Sparkles, AlertCircle, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Slider } from "@/components/ui/slider";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { products } from "@/lib/products";
+import { fetchLiveProducts, analyzeAI, type AnalyzeParams } from "@/lib/api";
+import { enrichProduct } from "@/lib/products";
 import { ProductCard } from "@/components/ProductCard";
+import { AIResults, type AIAnalysis } from "@/components/AIResults";
 
-// Clean routing definition
 export const Route = createFileRoute("/$category/$brand")({
   component: BrandProductDirectory,
 });
 
 function BrandProductDirectory() {
-  // Router extracts both parameter tokens from the URL path
   const { category, brand } = Route.useParams();
 
-  // Core Search & Filter States
-  const [budget, setBudget] = useState<number>(220000);
-  const [minBattery, setMinBattery] = useState<number>(80);
-  const [condition, setCondition] = useState<string>("any");
-  const [aiRecommendationPrompt, setAiRecommendationPrompt] = useState<string>("");
-  const [aiResponse, setAiResponse] = useState<string>("");
+  const {
+    data: rawProducts,
+    isLoading,
+    isError,
+  } = useQuery({
+    queryKey: ["live-products"],
+    queryFn: fetchLiveProducts,
+    staleTime: 60_000,
+  });
 
-  // 1. Dynamic Extraction of Available Database Records
+  const products = useMemo(() => (rawProducts ?? []).map((p, i) => enrichProduct(p, i)), [rawProducts]);
+
+  const brandCategoryProducts = useMemo(
+    () =>
+      products.filter(
+        (p) => p.category.toLowerCase() === category.toLowerCase() && p.brand.toLowerCase() === brand.toLowerCase()
+      ),
+    [products, category, brand]
+  );
+
+  // ── Sidebar filters (operate on real fields only) ─────────────────
+  const [budget, setBudget] = useState<number>(220000);
+  const [minBattery, setMinBattery] = useState<number>(0);
+  const [condition, setCondition] = useState<string>("any");
+
+  const availableConditions = useMemo(() => {
+    const set = new Set<string>();
+    brandCategoryProducts.forEach((p) => p.condition && set.add(p.condition));
+    return Array.from(set).sort();
+  }, [brandCategoryProducts]);
+
   const filteredProducts = useMemo(() => {
-    return products.filter((p) => {
-      if (p.category.toLowerCase() !== category.toLowerCase()) return false;
-      if (p.brand.toLowerCase() !== brand.toLowerCase()) return false;
-      if (p.price > budget) return false;
-      if (p.batteryHealth < minBattery) return false;
+    return brandCategoryProducts.filter((p) => {
+      if (p.price != null && p.price > budget) return false;
+      if (minBattery > 0 && p.battery != null && p.battery < minBattery) return false;
       if (condition !== "any" && p.condition !== condition) return false;
       return true;
     });
-  }, [category, brand, budget, minBattery, condition]);
+  }, [brandCategoryProducts, budget, minBattery, condition]);
 
-  // 2. Track Activated Filter Badges to display at the Top Canvas
   const activeBadges = useMemo(() => {
-    const badges = [];
+    const badges: { id: string; label: string }[] = [];
     if (budget < 220000) badges.push({ id: "budget", label: `Max ৳${budget.toLocaleString()}` });
-    if (minBattery > 80) badges.push({ id: "battery", label: `🔋 Min ${minBattery}% Health` });
+    if (minBattery > 0) badges.push({ id: "battery", label: `🔋 Min ${minBattery}% Health` });
     if (condition !== "any") badges.push({ id: "condition", label: `Grade: ${condition}` });
     return badges;
   }, [budget, minBattery, condition]);
 
   const clearBadge = (id: string) => {
     if (id === "budget") setBudget(220000);
-    if (id === "battery") setMinBattery(80);
+    if (id === "battery") setMinBattery(0);
     if (id === "condition") setCondition("any");
   };
 
-  // 3. Simulated AI Market Recommender
+  // ── Structured AI Advisory form — calls the real /api/ai-analyze ──
+  const availableStorages = useMemo(() => {
+    const set = new Set<string>();
+    brandCategoryProducts.forEach((p) => p.storage && set.add(p.storage));
+    return Array.from(set).sort();
+  }, [brandCategoryProducts]);
+
+  const [aiModel, setAiModel] = useState("");
+  const [aiRoms, setAiRoms] = useState<string[]>([]);
+  const [aiUrgency, setAiUrgency] = useState("flexible");
+  const [aiResult, setAiResult] = useState<AIAnalysis | null>(null);
+
+  const toggleRom = (rom: string) => {
+    setAiRoms((prev) => (prev.includes(rom) ? prev.filter((r) => r !== rom) : [...prev, rom]));
+  };
+
+  const aiMutation = useMutation({
+    mutationFn: (params: AnalyzeParams) => analyzeAI(params),
+    onSuccess: (data) => setAiResult(data),
+  });
+
   const handleAiConsultation = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!aiRecommendationPrompt.trim()) return;
-
-    const lower = aiRecommendationPrompt.toLowerCase();
-    if (lower.includes("budget") || lower.includes("cheap")) {
-      setAiResponse(`Based on live metrics for second-hand ${brand} ${category} hardware, prioritizing high deal scores over absolute flawless physical grading returns optimal yield under tight liquidity margins.`);
-    } else if (lower.includes("battery") || lower.includes("life")) {
-      setAiResponse(`Warning: Battery metrics scale non-linearly below 85% on lithium cells. We advise securing profiles holding clear warranty buffers above selecting higher native storage modules.`);
-    } else {
-      setAiResponse(`Analysis for ${brand} ${category} catalog locked: Cross-referencing platform listing durations indicates negotiating on entries hosted past 5+ days delivers high closing flexibility.`);
-    }
+    if (!aiModel.trim()) return;
+    aiMutation.mutate({
+      category,
+      model: aiModel.trim(),
+      roms: aiRoms,
+      budget,
+      min_battery: minBattery,
+      condition,
+      urgency: aiUrgency,
+    });
   };
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50/40 to-rose-50/50 font-sans text-slate-900 antialiased">
       <main className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8 space-y-8">
-        
-        {/* Navigation Breadcrumb back to brand selector */}
         <Link
           to="/$category"
           params={{ category }}
@@ -79,17 +118,19 @@ function BrandProductDirectory() {
           <ChevronLeft className="h-4 w-4 stroke-[3]" /> Back to {brand} Models
         </Link>
 
-        {/* Catalog Dashboard Title Header */}
         <div className="border-b border-slate-200 pb-4">
           <h1 className="text-3xl font-black text-slate-900 tracking-tight">
             {brand} <span className="text-blue-600 capitalize">{category} Hub</span>
           </h1>
-          <p className="text-sm text-slate-500 font-medium mt-1">
-            Live pipeline feeds containing real verified aggregates.
-          </p>
+          <p className="text-sm text-slate-500 font-medium mt-1">Live pipeline feeds containing real verified aggregates.</p>
         </div>
 
-        {/* Dynamic Interactive Filter Pill Badges Row */}
+        {isError && (
+          <div className="rounded-2xl border-2 border-dashed border-rose-300 bg-rose-50 p-6 text-center text-sm font-bold text-rose-600">
+            Couldn't reach the live inventory API. Make sure the backend is running on port 8000.
+          </div>
+        )}
+
         {activeBadges.length > 0 && (
           <div className="flex flex-wrap items-center gap-2 bg-white border p-3 rounded-xl shadow-sm">
             <span className="text-xs font-black uppercase tracking-wider text-slate-400 mr-1 flex items-center gap-1">
@@ -112,7 +153,11 @@ function BrandProductDirectory() {
             <Button
               variant="ghost"
               size="sm"
-              onClick={() => { setBudget(220000); setMinBattery(80); setCondition("any"); }}
+              onClick={() => {
+                setBudget(220000);
+                setMinBattery(0);
+                setCondition("any");
+              }}
               className="h-7 text-xs font-bold text-rose-500 hover:text-rose-700 hover:bg-rose-50 rounded-lg ml-auto"
             >
               Reset All
@@ -120,17 +165,18 @@ function BrandProductDirectory() {
           </div>
         )}
 
-        {/* Main Interface Layout Node Splitted Grid */}
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
-          
-          {/* LEFT CONTENT BLOCK: Real-time matched items array */}
           <div className="lg:col-span-8 order-2 lg:order-1 space-y-6">
-            {filteredProducts.length === 0 ? (
+            {isLoading ? (
+              <div className="flex items-center justify-center gap-2 rounded-2xl border-2 border-dashed border-slate-300 bg-white p-10 text-slate-500">
+                <Loader2 className="h-5 w-5 animate-spin" /> Loading live listings…
+              </div>
+            ) : filteredProducts.length === 0 ? (
               <div className="rounded-2xl border-2 border-dashed border-slate-300 py-24 text-center text-slate-500 bg-white shadow-inner flex flex-col items-center justify-center p-6">
                 <AlertCircle className="h-10 w-10 text-slate-400 mb-2" />
-                <p className="font-black text-lg text-slate-800">No Target Profiles Extracted</p>
+                <p className="font-black text-lg text-slate-800">No Matching Listings</p>
                 <p className="text-sm font-medium text-slate-400 mt-1 max-w-sm">
-                  Adjust target parameters on the dashboard controls sidebar to catch wider pool matrices.
+                  Adjust the filters on the sidebar to widen your search.
                 </p>
               </div>
             ) : (
@@ -142,48 +188,29 @@ function BrandProductDirectory() {
             )}
           </div>
 
-          {/* RIGHT SIDE PANEL: Sticky filter control dashboard */}
           <aside className="lg:col-span-4 order-1 lg:order-2 lg:sticky lg:top-20 bg-slate-800 border-2 border-slate-900 rounded-2xl p-6 space-y-6 shadow-xl text-white">
             <div className="flex items-center gap-2 border-b border-slate-700 pb-3">
               <SlidersHorizontal className="h-4 w-4 text-blue-400" />
-              <h3 className="font-black tracking-wider uppercase text-xs text-slate-200">
-                Pipeline Adjustments Panel
-              </h3>
+              <h3 className="font-black tracking-wider uppercase text-xs text-slate-200">Pipeline Adjustments Panel</h3>
             </div>
 
-            {/* Financial Param Slider Container */}
             <div className="space-y-3 bg-slate-900/50 p-4 rounded-xl border border-slate-700">
               <div className="flex justify-between items-baseline">
                 <Label className="text-xs font-black uppercase text-slate-400">Max Budget Ceiling</Label>
                 <span className="text-xl font-black text-amber-400 font-mono">৳{budget.toLocaleString()}</span>
               </div>
-              <Slider
-                value={[budget]}
-                onValueChange={(val) => setBudget(val[0])}
-                min={30000}
-                max={220000}
-                step={5000}
-                className="py-1"
-              />
+              <Slider value={[budget]} onValueChange={(val) => setBudget(val[0])} min={10000} max={220000} step={5000} className="py-1" />
             </div>
 
-            {/* Battery Health Slider Container */}
             <div className="space-y-3 bg-slate-900/50 p-4 rounded-xl border border-slate-700">
               <div className="flex justify-between items-baseline">
                 <Label className="text-xs font-black uppercase text-slate-400">Minimum Battery Bounds</Label>
-                <span className="text-base font-black text-emerald-400 font-mono">{minBattery}%+</span>
+                <span className="text-base font-black text-emerald-400 font-mono">{minBattery > 0 ? `${minBattery}%+` : "Any"}</span>
               </div>
-              <Slider
-                value={[minBattery]}
-                onValueChange={(val) => setMinBattery(val[0])}
-                min={75}
-                max={100}
-                step={1}
-                className="py-1"
-              />
+              <Slider value={[minBattery]} onValueChange={(val) => setMinBattery(val[0])} min={0} max={100} step={5} className="py-1" />
+              <p className="text-[10px] text-slate-500">Listings with unknown battery health are always kept.</p>
             </div>
 
-            {/* structural condition grading select dropdown */}
             <div className="space-y-2">
               <Label className="text-xs font-black uppercase text-slate-400">Structural Wear Grading</Label>
               <Select value={condition} onValueChange={setCondition}>
@@ -192,54 +219,110 @@ function BrandProductDirectory() {
                 </SelectTrigger>
                 <SelectContent className="bg-slate-900 text-white border-slate-700">
                   <SelectItem value="any">Accept Any Quality Level</SelectItem>
-                  <SelectItem value="Mint">Mint (Like New Structural Core)</SelectItem>
-                  <SelectItem value="Good">Good (Minor Micro-scuffs Present)</SelectItem>
-                  <SelectItem value="Fair">Fair (Noticeable Micro-abrasions)</SelectItem>
+                  {availableConditions.map((c) => (
+                    <SelectItem key={c} value={c}>
+                      {c}
+                    </SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
             </div>
           </aside>
         </div>
 
-        {/* AI Recommendations System Console */}
-        <section className="bg-gradient-to-br from-slate-900 via-blue-950 to-slate-900 text-white rounded-3xl p-6 md:p-8 border-2 border-blue-500/30 shadow-xl space-y-4">
+        {/* Structured AI Advisory Form — calls the real /api/ai-analyze endpoint */}
+        <section className="bg-gradient-to-br from-slate-900 via-blue-950 to-slate-900 text-white rounded-3xl p-6 md:p-8 border-2 border-blue-500/30 shadow-xl space-y-5">
           <div className="flex items-center gap-2.5">
             <div className="p-2 bg-blue-500/20 rounded-xl text-blue-400 border border-blue-500/30">
-              <Sparkles className="h-5 w-5 animate-pulse" />
+              <Sparkles className="h-5 w-5" />
             </div>
             <div>
-              <h2 className="text-lg font-black tracking-tight flex items-center gap-2">
-                AI Advisory Search Engine
-              </h2>
+              <h2 className="text-lg font-black tracking-tight flex items-center gap-2">AI Advisory Search Engine</h2>
               <p className="text-xs text-slate-400 font-medium">
-                Ask queries regarding parameters or timing strategies for purchasing second-hand hardware configurations.
+                Tell it the exact model you want — it compares real dealers and tells you whether to buy now or wait.
               </p>
             </div>
           </div>
 
-          <form onSubmit={handleAiConsultation} className="flex flex-col sm:flex-row gap-3">
-            <input
-              type="text"
-              placeholder={`e.g., "Is it safe to buy a ${brand} ${category} at 84% battery?" or "what budget is reasonable?"...`}
-              value={aiRecommendationPrompt}
-              onChange={(e) => setAiRecommendationPrompt(e.target.value)}
-              className="flex-1 px-4 py-3 rounded-xl bg-slate-950 border border-slate-700 font-medium text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:border-blue-500 transition shadow-inner"
-            />
-            <Button type="submit" className="bg-blue-600 hover:bg-blue-700 text-white font-black px-6 h-12 rounded-xl transition shadow-lg shadow-blue-600/20 shrink-0">
-              Consult Advisor
+          <form onSubmit={handleAiConsultation} className="space-y-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="space-y-1.5">
+                <Label className="text-xs font-black uppercase text-slate-400">Model</Label>
+                <input
+                  type="text"
+                  placeholder={`e.g. "${brand} ${category === "Phone" ? "Galaxy S23" : category}"`}
+                  value={aiModel}
+                  onChange={(e) => setAiModel(e.target.value)}
+                  className="w-full px-4 py-3 rounded-xl bg-slate-950 border border-slate-700 font-medium text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:border-blue-500 transition shadow-inner"
+                />
+              </div>
+
+              <div className="space-y-1.5">
+                <Label className="text-xs font-black uppercase text-slate-400">Urgency</Label>
+                <Select value={aiUrgency} onValueChange={setAiUrgency}>
+                  <SelectTrigger className="w-full h-11 bg-slate-950 border border-slate-700 font-bold text-white focus:ring-1 focus:ring-blue-500">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent className="bg-slate-900 text-white border-slate-700">
+                    <SelectItem value="flexible">Flexible — no rush</SelectItem>
+                    <SelectItem value="soon">Soon — within 2 weeks</SelectItem>
+                    <SelectItem value="urgent">Urgent — need it now</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
+            {availableStorages.length > 0 && (
+              <div className="space-y-1.5">
+                <Label className="text-xs font-black uppercase text-slate-400">Storage (optional)</Label>
+                <div className="flex flex-wrap gap-2">
+                  {availableStorages.map((rom) => (
+                    <button
+                      type="button"
+                      key={rom}
+                      onClick={() => toggleRom(rom)}
+                      className={`px-3 py-1.5 rounded-full text-xs font-bold border transition ${
+                        aiRoms.includes(rom)
+                          ? "bg-blue-600 border-blue-500 text-white"
+                          : "bg-slate-950 border-slate-700 text-slate-300 hover:border-blue-500"
+                      }`}
+                    >
+                      {rom}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            <p className="text-[11px] text-slate-500">
+              Uses your Budget (৳{budget.toLocaleString()}), Min Battery ({minBattery > 0 ? `${minBattery}%+` : "any"}) and
+              Condition ({condition === "any" ? "any" : condition}) from the panel above.
+            </p>
+
+            <Button
+              type="submit"
+              disabled={aiMutation.isPending || !aiModel.trim()}
+              className="bg-blue-600 hover:bg-blue-700 text-white font-black px-6 h-12 rounded-xl transition shadow-lg shadow-blue-600/20 w-full sm:w-auto"
+            >
+              {aiMutation.isPending ? (
+                <span className="flex items-center gap-2">
+                  <Loader2 className="h-4 w-4 animate-spin" /> Analyzing…
+                </span>
+              ) : (
+                "Consult Advisor"
+              )}
             </Button>
           </form>
 
-          {aiResponse && (
-            <div className="p-4 rounded-xl bg-blue-950/40 border border-blue-500/20 text-slate-200 text-sm leading-relaxed font-medium animate-fadeIn">
-              <span className="font-mono text-xs text-blue-400 font-black block uppercase tracking-widest mb-1">
-                Evaluation Response:
-              </span>
-              "{aiResponse}"
+          {aiMutation.isError && (
+            <div className="p-4 rounded-xl bg-rose-950/40 border border-rose-500/30 text-rose-200 text-sm">
+              Couldn't reach the AI advisory endpoint. Make sure the backend is running and Ollama (or your configured
+              model provider) is reachable.
             </div>
           )}
-        </section>
 
+          {aiResult && <AIResults result={aiResult} model={aiModel} />}
+        </section>
       </main>
     </div>
   );
