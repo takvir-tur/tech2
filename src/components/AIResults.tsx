@@ -1,6 +1,7 @@
-import { ExternalLink, BatteryMedium, ShieldCheck, Package, TrendingUp, Lightbulb, Clock } from "lucide-react";
-import { getProductImage, formatPrice } from "@/lib/products";
+import { Info, BatteryMedium, ShieldCheck, Package, TrendingUp, Lightbulb, Clock } from "lucide-react";
+import { enrichProduct, formatPrice } from "@/lib/products";
 import { Badge } from "@/components/ui/badge";
+import { ProductLink } from "@/components/ProductLink";
 
 export interface DealItem {
   name: string;
@@ -21,44 +22,50 @@ export interface AIAnalysis {
   wait_suggestion: string | null;
 }
 
-function DealCard({ item }: { item: DealItem }) {
+function DealCard({ item, index }: { item: DealItem; index: number }) {
+  // DealItem has the exact same shape the backend gives /api/products, so it
+  // can go straight through the same enrichment (brand + thumbnail + id) that
+  // every other listing in the app uses — keeping this fully consistent with
+  // the product grid and the homepage.
+  const product = enrichProduct(item, index);
+
   const card = (
     <div className="group flex flex-col gap-3 rounded-xl border border-slate-700 bg-slate-900 p-4 hover:border-blue-500/60 transition-colors cursor-pointer h-full">
       <div className="relative aspect-square overflow-hidden rounded-lg bg-slate-800">
         <img
-          src={getProductImage(item.name)}
-          alt={item.name}
+          src={product.image}
+          alt={product.name}
           className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105"
         />
-        {item.condition && (
+        {product.condition && (
           <span className="absolute right-2 top-2 rounded-full bg-black/60 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-white backdrop-blur">
-            {item.condition}
+            {product.condition}
           </span>
         )}
       </div>
 
       <div>
-        <p className="text-xs font-black uppercase tracking-widest text-blue-400">{item.source}</p>
-        <h4 className="mt-0.5 text-sm font-semibold text-white leading-snug">{item.name}</h4>
+        <p className="text-xs font-black uppercase tracking-widest text-blue-400">{product.source}</p>
+        <h4 className="mt-0.5 text-sm font-semibold text-white leading-snug">{product.name}</h4>
       </div>
 
       <div className="flex flex-wrap gap-1.5">
-        {item.battery != null && (
+        {product.battery != null && (
           <Badge variant="outline" className="gap-1 text-[10px] border-slate-600 text-slate-300">
-            <BatteryMedium className="h-3 w-3" /> {item.battery}%
+            <BatteryMedium className="h-3 w-3" /> {product.battery}%
           </Badge>
         )}
-        {item.storage && (
+        {product.storage && (
           <Badge variant="outline" className="gap-1 text-[10px] border-slate-600 text-slate-300">
-            {item.storage}
+            {product.storage}
           </Badge>
         )}
-        {item.warranty && (
+        {product.warranty && (
           <Badge variant="outline" className="gap-1 text-[10px] border-slate-600 text-slate-300">
             <ShieldCheck className="h-3 w-3" /> Warranty
           </Badge>
         )}
-        {item.box === true && (
+        {product.box === true && (
           <Badge variant="outline" className="gap-1 text-[10px] border-slate-600 text-slate-300">
             <Package className="h-3 w-3" /> Box
           </Badge>
@@ -67,25 +74,20 @@ function DealCard({ item }: { item: DealItem }) {
 
       <div className="mt-auto flex items-center justify-between">
         <span className="text-lg font-black text-amber-300 font-mono">
-          {item.price != null ? formatPrice(item.price) : "Price N/A"}
+          {product.price != null ? formatPrice(product.price) : "Price N/A"}
         </span>
-        {item.link && (
-          <span className="flex items-center gap-1 rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-bold text-white">
-            <ExternalLink className="h-3 w-3" /> View Deal
-          </span>
-        )}
+        <span className="flex items-center gap-1 rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-bold text-white">
+          <Info className="h-3 w-3" /> View Details
+        </span>
       </div>
     </div>
   );
 
-  if (item.link) {
-    return (
-      <a href={item.link} target="_blank" rel="noopener noreferrer" className="block h-full">
-        {card}
-      </a>
-    );
-  }
-  return card;
+  return (
+    <ProductLink product={product} className="block h-full">
+      {card}
+    </ProductLink>
+  );
 }
 
 interface Props {
@@ -120,7 +122,7 @@ export function AIResults({ result, model }: Props) {
         ) : (
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {same_model_dealers.map((item, i) => (
-              <DealCard key={i} item={item} />
+              <DealCard key={i} item={item} index={i} />
             ))}
           </div>
         )}
@@ -137,7 +139,7 @@ export function AIResults({ result, model }: Props) {
           </div>
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
             {better_options.map((item, i) => (
-              <DealCard key={i} item={item} />
+              <DealCard key={i} item={item} index={i} />
             ))}
           </div>
         </section>

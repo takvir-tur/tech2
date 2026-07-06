@@ -1,15 +1,15 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useMemo, useState } from "react";
-import { useQuery, useMutation } from "@tanstack/react-query";
-import { ChevronLeft, SlidersHorizontal, X, Sparkles, AlertCircle, Loader2 } from "lucide-react";
+import { useQuery } from "@tanstack/react-query";
+import { ChevronLeft, SlidersHorizontal, X, AlertCircle, Loader2, Sparkles, ArrowRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Slider } from "@/components/ui/slider";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { fetchLiveProducts, analyzeAI, type AnalyzeParams } from "@/lib/api";
+import { fetchLiveProducts } from "@/lib/api";
 import { enrichProduct } from "@/lib/products";
 import { ProductCard } from "@/components/ProductCard";
-import { AIResults, type AIAnalysis } from "@/components/AIResults";
+import { AIAdvisoryForm } from "@/components/AIAdvisoryForm";
 
 export const Route = createFileRoute("/$category/$brand")({
   component: BrandProductDirectory,
@@ -72,41 +72,6 @@ function BrandProductDirectory() {
     if (id === "condition") setCondition("any");
   };
 
-  // ── Structured AI Advisory form — calls the real /api/ai-analyze ──
-  const availableStorages = useMemo(() => {
-    const set = new Set<string>();
-    brandCategoryProducts.forEach((p) => p.storage && set.add(p.storage));
-    return Array.from(set).sort();
-  }, [brandCategoryProducts]);
-
-  const [aiModel, setAiModel] = useState("");
-  const [aiRoms, setAiRoms] = useState<string[]>([]);
-  const [aiUrgency, setAiUrgency] = useState("flexible");
-  const [aiResult, setAiResult] = useState<AIAnalysis | null>(null);
-
-  const toggleRom = (rom: string) => {
-    setAiRoms((prev) => (prev.includes(rom) ? prev.filter((r) => r !== rom) : [...prev, rom]));
-  };
-
-  const aiMutation = useMutation({
-    mutationFn: (params: AnalyzeParams) => analyzeAI(params),
-    onSuccess: (data) => setAiResult(data),
-  });
-
-  const handleAiConsultation = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!aiModel.trim()) return;
-    aiMutation.mutate({
-      category,
-      model: aiModel.trim(),
-      roms: aiRoms,
-      budget,
-      min_battery: minBattery,
-      condition,
-      urgency: aiUrgency,
-    });
-  };
-
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50/40 to-rose-50/50 font-sans text-slate-900 antialiased">
       <main className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8 space-y-8">
@@ -124,6 +89,21 @@ function BrandProductDirectory() {
           </h1>
           <p className="text-sm text-slate-500 font-medium mt-1">Live pipeline feeds containing real verified aggregates.</p>
         </div>
+
+        {/* Compact, eye-catching nudge toward the AI Advisor further down this
+            same page — deliberately small, not a modal/popup. */}
+        <a
+          href="#ai-advisory"
+          className="group flex items-center justify-between gap-3 rounded-2xl border border-blue-300 bg-gradient-to-r from-blue-50 via-indigo-50 to-blue-50 px-4 py-2.5 shadow-sm transition hover:border-blue-400 hover:shadow-md"
+        >
+          <span className="flex items-center gap-2 text-sm font-bold text-blue-700">
+            <Sparkles className="h-4 w-4 text-blue-500" />
+            Not sure which one to pick? Let the AI Advisor compare deals for you.
+          </span>
+          <span className="flex items-center gap-1 text-xs font-black uppercase tracking-wide text-blue-600 transition-transform group-hover:translate-x-0.5">
+            Try it <ArrowRight className="h-3.5 w-3.5" />
+          </span>
+        </a>
 
         {isError && (
           <div className="rounded-2xl border-2 border-dashed border-rose-300 bg-rose-50 p-6 text-center text-sm font-bold text-rose-600">
@@ -230,99 +210,16 @@ function BrandProductDirectory() {
           </aside>
         </div>
 
-        {/* Structured AI Advisory Form — calls the real /api/ai-analyze endpoint */}
-        <section className="bg-gradient-to-br from-slate-900 via-blue-950 to-slate-900 text-white rounded-3xl p-6 md:p-8 border-2 border-blue-500/30 shadow-xl space-y-5">
-          <div className="flex items-center gap-2.5">
-            <div className="p-2 bg-blue-500/20 rounded-xl text-blue-400 border border-blue-500/30">
-              <Sparkles className="h-5 w-5" />
-            </div>
-            <div>
-              <h2 className="text-lg font-black tracking-tight flex items-center gap-2">AI Advisory Search Engine</h2>
-              <p className="text-xs text-slate-400 font-medium">
-                Tell it the exact model you want — it compares real dealers and tells you whether to buy now or wait.
-              </p>
-            </div>
-          </div>
-
-          <form onSubmit={handleAiConsultation} className="space-y-4">
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div className="space-y-1.5">
-                <Label className="text-xs font-black uppercase text-slate-400">Model</Label>
-                <input
-                  type="text"
-                  placeholder={`e.g. "${brand} ${category === "Phone" ? "Galaxy S23" : category}"`}
-                  value={aiModel}
-                  onChange={(e) => setAiModel(e.target.value)}
-                  className="w-full px-4 py-3 rounded-xl bg-slate-950 border border-slate-700 font-medium text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:border-blue-500 transition shadow-inner"
-                />
-              </div>
-
-              <div className="space-y-1.5">
-                <Label className="text-xs font-black uppercase text-slate-400">Urgency</Label>
-                <Select value={aiUrgency} onValueChange={setAiUrgency}>
-                  <SelectTrigger className="w-full h-11 bg-slate-950 border border-slate-700 font-bold text-white focus:ring-1 focus:ring-blue-500">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent className="bg-slate-900 text-white border-slate-700">
-                    <SelectItem value="flexible">Flexible — no rush</SelectItem>
-                    <SelectItem value="soon">Soon — within 2 weeks</SelectItem>
-                    <SelectItem value="urgent">Urgent — need it now</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-
-            {availableStorages.length > 0 && (
-              <div className="space-y-1.5">
-                <Label className="text-xs font-black uppercase text-slate-400">Storage (optional)</Label>
-                <div className="flex flex-wrap gap-2">
-                  {availableStorages.map((rom) => (
-                    <button
-                      type="button"
-                      key={rom}
-                      onClick={() => toggleRom(rom)}
-                      className={`px-3 py-1.5 rounded-full text-xs font-bold border transition ${
-                        aiRoms.includes(rom)
-                          ? "bg-blue-600 border-blue-500 text-white"
-                          : "bg-slate-950 border-slate-700 text-slate-300 hover:border-blue-500"
-                      }`}
-                    >
-                      {rom}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            <p className="text-[11px] text-slate-500">
-              Uses your Budget (৳{budget.toLocaleString()}), Min Battery ({minBattery > 0 ? `${minBattery}%+` : "any"}) and
-              Condition ({condition === "any" ? "any" : condition}) from the panel above.
-            </p>
-
-            <Button
-              type="submit"
-              disabled={aiMutation.isPending || !aiModel.trim()}
-              className="bg-blue-600 hover:bg-blue-700 text-white font-black px-6 h-12 rounded-xl transition shadow-lg shadow-blue-600/20 w-full sm:w-auto"
-            >
-              {aiMutation.isPending ? (
-                <span className="flex items-center gap-2">
-                  <Loader2 className="h-4 w-4 animate-spin" /> Analyzing…
-                </span>
-              ) : (
-                "Consult Advisor"
-              )}
-            </Button>
-          </form>
-
-          {aiMutation.isError && (
-            <div className="p-4 rounded-xl bg-rose-950/40 border border-rose-500/30 text-rose-200 text-sm">
-              Couldn't reach the AI advisory endpoint. Make sure the backend is running and Ollama (or your configured
-              model provider) is reachable.
-            </div>
-          )}
-
-          {aiResult && <AIResults result={aiResult} model={aiModel} />}
-        </section>
+        {/* AI Advisory stays right here on the brand page too — not removed,
+            just also now available up on the homepage. */}
+        <AIAdvisoryForm
+          allProducts={products}
+          fixedCategory={category}
+          optionsPool={brandCategoryProducts}
+          defaultBudget={budget}
+          anchorId="ai-advisory"
+          modelPlaceholder={`e.g. "${brand} ${category === "Phone" ? "Galaxy S23" : category}"`}
+        />
       </main>
     </div>
   );

@@ -9,13 +9,15 @@ import {
   Laptop,
   ChevronLeft,
   ChevronRight,
-  ExternalLink,
+  Info,
   Loader2,
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { fetchLiveProducts } from "@/lib/api";
 import { enrichProduct, formatPrice } from "@/lib/products";
+import { ProductLink } from "@/components/ProductLink";
+import { AIAdvisoryForm } from "@/components/AIAdvisoryForm";
 
 export const Route = createFileRoute("/")({
   head: () => ({
@@ -93,11 +95,9 @@ function Home() {
                   <div className="px-4 py-3 text-sm text-slate-400">No matching listings found.</div>
                 ) : (
                   searchSuggestions.map((product) => (
-                    <a
+                    <ProductLink
                       key={product.id}
-                      href={product.link}
-                      target="_blank"
-                      rel="noopener noreferrer"
+                      product={product}
                       onClick={() => setQuery("")}
                       className="flex w-full items-center justify-between gap-3 border-b border-slate-700 bg-slate-800 px-4 py-3 text-left text-white transition last:border-0 hover:bg-slate-700"
                     >
@@ -107,8 +107,8 @@ function Home() {
                           {formatPrice(product.price)} · {product.source}
                         </div>
                       </div>
-                      <ExternalLink className="h-3.5 w-3.5 shrink-0 text-blue-400" />
-                    </a>
+                      <Info className="h-3.5 w-3.5 shrink-0 text-blue-400" />
+                    </ProductLink>
                   ))
                 )}
               </div>
@@ -185,26 +185,28 @@ function Home() {
 
                 <div className="flex flex-wrap gap-4 text-xs font-bold text-slate-600 bg-slate-100 p-2.5 rounded-lg border border-slate-200">
                   <div>
-                    🔋 Battery: <span className="text-slate-900 font-black">{activeHotProduct.battery != null ? `${activeHotProduct.battery}%` : "N/A"}</span>
+                    🔋 Battery:{" "}
+                    <span className="text-slate-900 font-black">
+                      {activeHotProduct.battery != null ? `${activeHotProduct.battery}%` : "N/A"}
+                    </span>
                   </div>
                   <div>
                     🛒 Source: <span className="text-blue-600 font-extrabold">{activeHotProduct.source}</span>
                   </div>
                   <div>
-                    📦 Box: <span className="text-slate-900 font-black">{activeHotProduct.box === true ? "Included" : activeHotProduct.box === false ? "Not included" : "N/A"}</span>
+                    📦 Box:{" "}
+                    <span className="text-slate-900 font-black">
+                      {activeHotProduct.box === true ? "Included" : activeHotProduct.box === false ? "Not included" : "N/A"}
+                    </span>
                   </div>
                 </div>
 
-                {activeHotProduct.link && (
-                  <a
-                    href={activeHotProduct.link}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="inline-flex items-center gap-2 self-start rounded-xl bg-blue-600 px-5 py-2.5 text-sm font-black text-white shadow-md transition hover:bg-blue-700"
-                  >
-                    View on {activeHotProduct.source} <ExternalLink className="h-4 w-4" />
-                  </a>
-                )}
+                <ProductLink
+                  product={activeHotProduct}
+                  className="inline-flex items-center gap-2 self-start rounded-xl bg-blue-600 px-5 py-2.5 text-sm font-black text-white shadow-md transition hover:bg-blue-700"
+                >
+                  View Details <Info className="h-4 w-4" />
+                </ProductLink>
               </div>
             </div>
 
@@ -292,6 +294,24 @@ function Home() {
               </div>
             </div>
           </Link>
+        </section>
+
+        {/* ==========================================================
+            3. AI ADVISORY SEARCH — available right here too, no need
+               to drill into a category/brand first.
+            ========================================================== */}
+        <section id="ai-advisory" className="space-y-3 scroll-mt-24">
+          <div>
+            <h3 className="text-xs font-black uppercase tracking-widest text-blue-600">Or Skip Straight To The AI Advisor</h3>
+            <p className="text-sm text-slate-500 font-medium">
+              Don't want to browse manually? Tell the AI what you want and let it compare real listings for you.
+            </p>
+          </div>
+          <AIAdvisoryForm
+            allProducts={products}
+            title="AI Advisory Search Engine"
+            subtitle="Tell it the exact model you want — it compares real dealers and tells you whether to buy now or wait."
+          />
         </section>
       </main>
 
