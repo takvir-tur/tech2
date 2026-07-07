@@ -180,7 +180,7 @@ export function ProductBrowser({
 
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
         {/* Sidebar: filters + sorting */}
-        <aside className="lg:col-span-3 bg-white border border-slate-200 rounded-2xl p-5 shadow-sm lg:sticky lg:top-20">
+        <aside className="lg:col-span-3 bg-white border border-slate-200 rounded-2xl p-5 shadow-sm lg:sticky lg:top-20 lg:max-h-[calc(100vh-6rem)] lg:overflow-y-auto [&::-webkit-scrollbar]:w-1 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-slate-200 hover:[&::-webkit-scrollbar-thumb]:bg-slate-300">
           <div className="flex items-center gap-2 pb-3 border-b border-slate-200">
             <SlidersHorizontal className="h-4 w-4 text-teal-600" />
             <h3 className="text-xs font-black uppercase tracking-wider text-slate-700">Filters</h3>
@@ -250,12 +250,21 @@ export function ProductBrowser({
             {availableConditions.length === 0 ? (
               <p className="text-xs text-slate-400">No condition data available yet.</p>
             ) : (
-              availableConditions.map((c) => (
-                <label key={c} className="flex items-center gap-2 text-sm font-medium text-slate-700 cursor-pointer">
-                  <Checkbox checked={selectedConditions.includes(c)} onCheckedChange={() => toggleCondition(c)} />
-                  {c}
-                </label>
-              ))
+              availableConditions.map((c) => {
+                const id = `cond-${c.replace(/\s+/g, "-").toLowerCase()}`;
+                return (
+                  <div key={c} className="flex items-center gap-2">
+                    <Checkbox
+                      id={id}
+                      checked={selectedConditions.includes(c)}
+                      onCheckedChange={() => toggleCondition(c)}
+                    />
+                    <label htmlFor={id} className="text-sm font-medium text-slate-700 cursor-pointer select-none leading-none">
+                      {c}
+                    </label>
+                  </div>
+                );
+              })
             )}
           </FilterSection>
 
@@ -266,12 +275,21 @@ export function ProductBrowser({
             {availableStorages.length === 0 ? (
               <p className="text-xs text-slate-400">No storage data available yet.</p>
             ) : (
-              availableStorages.map((s) => (
-                <label key={s} className="flex items-center gap-2 text-sm font-medium text-slate-700 cursor-pointer">
-                  <Checkbox checked={selectedStorages.includes(s)} onCheckedChange={() => toggleStorage(s)} />
-                  {s}
-                </label>
-              ))
+              availableStorages.map((s) => {
+                const id = `stor-${s.replace(/\s+/g, "-").replace(/\//g, "-").toLowerCase()}`;
+                return (
+                  <div key={s} className="flex items-center gap-2">
+                    <Checkbox
+                      id={id}
+                      checked={selectedStorages.includes(s)}
+                      onCheckedChange={() => toggleStorage(s)}
+                    />
+                    <label htmlFor={id} className="text-sm font-medium text-slate-700 cursor-pointer select-none leading-none">
+                      {s}
+                    </label>
+                  </div>
+                );
+              })
             )}
           </FilterSection>
         </aside>

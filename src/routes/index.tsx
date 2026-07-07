@@ -1,10 +1,10 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Flame, Smartphone, Tablet, Laptop, ChevronLeft, ChevronRight, Info, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { fetchLiveProducts } from "@/lib/api";
-import { enrichProduct, formatPrice } from "@/lib/products";
+import { enrichProduct, formatPrice, getProductImage, type LiveProduct } from "@/lib/products";
 import { ProductLink } from "@/components/ProductLink";
 import { AIAdvisoryForm } from "@/components/AIAdvisoryForm";
 
@@ -24,6 +24,87 @@ export const Route = createFileRoute("/")({
 
 const SLIDE_INTERVAL_MS = 5000;
 
+/**
+ * Curated "Hot Deals" — one best-value pick per category, sourced from
+ * real scraped inventory, within the specified second-hand price bands.
+ */
+const CURATED_HOT_DEALS: LiveProduct[] = [
+  {
+    name: "iPhone Air 256GB Cloud White e-Sim (Used)",
+    price: 85000,
+    battery: 100,
+    condition: "Used",
+    warranty: null,
+    box: true,
+    storage: "256GB",
+    source: "Apple Gadgets",
+    link: "https://www.applegadgetsbd.com/contact-us",
+    category: "phone",
+    id: "hot-iphone-air",
+    brand: "Apple",
+    image: getProductImage("iPhone Air 256GB Cloud White"),
+  },
+  {
+    name: "Samsung S24 Ultra 5G 12/512GB Titanium Black Dual Sim SD (Used)",
+    price: 80000,
+    battery: null,
+    condition: "Used",
+    warranty: null,
+    box: true,
+    storage: "12/512GB",
+    source: "Apple Gadgets",
+    link: "https://www.applegadgetsbd.com/contact-us",
+    category: "phone",
+    id: "hot-samsung-s24-ultra",
+    brand: "Samsung",
+    image: getProductImage("Samsung S24 Ultra 5G"),
+  },
+  {
+    name: "Apple MacBook Air 13.6'' M3 8-CPU 8-GPU 8GB/256GB Space Gray (Used)",
+    price: 114000,
+    battery: 100,
+    condition: "Used",
+    warranty: null,
+    box: true,
+    storage: "8GB/256GB",
+    source: "tech2",
+    link: "#",
+    category: "laptop",
+    id: "hot-macbook-air-m3",
+    brand: "Apple",
+    image: getProductImage("MacBook Air 13.6"),
+  },
+  {
+    name: "iPad 11th Gen 11'' 128GB WiFi Silver (Used)",
+    price: 39000,
+    battery: 100,
+    condition: "Used",
+    warranty: null,
+    box: true,
+    storage: "128GB",
+    source: "Apple Gadgets",
+    link: "https://www.applegadgetsbd.com/contact-us",
+    category: "tablet",
+    id: "hot-ipad-11th-gen",
+    brand: "Apple",
+    image: getProductImage("iPad 11th Gen"),
+  },
+  {
+    name: "Samsung Galaxy Tab S9 FE 6/128GB Gray (Used)",
+    price: 55000,
+    battery: 92,
+    condition: "Used",
+    warranty: null,
+    box: true,
+    storage: "6/128GB",
+    source: "tech2",
+    link: "#",
+    category: "tablet",
+    id: "hot-galaxy-tab-s9-fe",
+    brand: "Samsung",
+    image: getProductImage("Samsung Galaxy Tab S9 FE"),
+  },
+];
 function Home() {
   const {
     data: rawProducts,
@@ -36,37 +117,78 @@ function Home() {
   });
 
   const products = useMemo(() => (rawProducts ?? []).map((p, i) => enrichProduct(p, i)), [rawProducts]);
+  
 
-  // "Hot deals" = the priciest, verifiably-priced live listings — a stand-in
-  // for a deal-score, since the real scraped data has no such field.
-  const hotProducts = useMemo(() => {
-    return [...products]
-      .filter((p) => p.price != null)
-      .sort((a, b) => (b.price ?? 0) - (a.price ?? 0))
-      .slice(0, 5);
-  }, [products]);
+  // "Hot Deals" — curated second-hand picks, one per category, within
+  // realistic price bands for the Bangladeshi second-hand market.
+  const hotProducts = CURATED_HOT_DEALS;
 
-  const [hotIndex, setHotIndex] = useState(0);
+    const n = hotProducts.length;
+
+  // Infinite-loop carousel using the clone trick:
+  //   extendedSlides = [clone_of_last, ...real_slides, clone_of_first]
+  // innerIdx 1..n = real slides; 0 = clone of last; n+1 = clone of first.
+  // On transitionend at a clone we instantly teleport (no CSS transition)
+  // to the matching real slide, making the loop seamless in both directions.
+  const extendedSlides = useMemo(
+    () => [hotProducts[n - 1], ...hotProducts, hotProducts[0]],
+    [hotProducts, n],
+  );
+
+  const [innerIdx, setInnerIdx] = useState(1);
+  const [animating, setAnimating] = useState(true);
   const [isPaused, setIsPaused] = useState(false);
 
-  const nextHotDeal = () => setHotIndex((prev) => (prev + 1) % hotProducts.length);
-  const prevHotDeal = () => setHotIndex((prev) => (prev - 1 + hotProducts.length) % hotProducts.length);
+  // The dot that should appear "active" — always maps to a real slide index.
+  const dotIndex = ((innerIdx - 1) % n + n) % n;
 
-  // Auto-advance the carousel, pausing while the user is hovering over it.
-  useEffect(() => {
-    if (hotProducts.length <= 1 || isPaused) return;
-    const timer = setInterval(() => {
-      setHotIndex((prev) => (prev + 1) % hotProducts.length);
-    }, SLIDE_INTERVAL_MS);
-    return () => clearInterval(timer);
-  }, [hotProducts.length, isPaused]);
+  const nextHotDeal = useCallback(() => {
+    setAnimating(true);
+    setInnerIdx((prev) => prev + 1);
+  }, []);
 
-  // Clamp the index if the underlying list shrinks (e.g. after a refetch).
-  useEffect(() => {
-    if (hotIndex >= hotProducts.length && hotProducts.length > 0) {
-      setHotIndex(0);
+  const prevHotDeal = useCallback(() => {
+    setAnimating(true);
+    setInnerIdx((prev) => prev - 1);
+  }, []);
+
+  const goToDot = useCallback((i: number) => {
+    setAnimating(true);
+    setInnerIdx(i + 1);
+  }, []);
+
+  // After the CSS transition lands on a clone, teleport to the real slide.
+  const handleTransitionEnd = useCallback(() => {
+    if (innerIdx === 0) {
+      // Arrived at clone-of-last → jump to real last without animation.
+      setAnimating(false);
+      setInnerIdx(n);
+    } else if (innerIdx === n + 1) {
+      // Arrived at clone-of-first → jump to real first without animation.
+      setAnimating(false);
+      setInnerIdx(1);
     }
-  }, [hotProducts.length, hotIndex]);
+  }, [innerIdx, n]);
+
+  // Re-enable animation one paint cycle after a teleport so the next swipe animates.
+  const rafRef = useRef<number | null>(null);
+  useEffect(() => {
+    if (!animating) {
+      rafRef.current = requestAnimationFrame(() => {
+        rafRef.current = requestAnimationFrame(() => setAnimating(true));
+      });
+    }
+    return () => {
+      if (rafRef.current != null) cancelAnimationFrame(rafRef.current);
+    };
+  }, [animating]);
+
+  // Auto-advance, paused on hover.
+  useEffect(() => {
+    if (n <= 1 || isPaused) return;
+    const timer = setInterval(nextHotDeal, SLIDE_INTERVAL_MS);
+    return () => clearInterval(timer);
+  }, [n, isPaused, nextHotDeal]);
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50/40 to-rose-50/50 font-sans text-slate-900 antialiased selection:bg-rose-200">
@@ -103,10 +225,10 @@ function Home() {
                 {hotProducts.map((_, i) => (
                   <button
                     key={i}
-                    onClick={() => setHotIndex(i)}
+                    onClick={() => goToDot(i)}
                     aria-label={`Go to slide ${i + 1}`}
-                    className={`h-1.5 rounded-full transition-all ${
-                      i === hotIndex ? "w-6 bg-orange-500" : "w-1.5 bg-orange-200 hover:bg-orange-300"
+                    className={`h-1.5 rounded-full transition-all duration-300 ${
+                      i === dotIndex ? "w-6 bg-orange-500" : "w-1.5 bg-orange-200 hover:bg-orange-300"
                     }`}
                   />
                 ))}
@@ -115,11 +237,12 @@ function Home() {
 
             <div className="overflow-hidden">
               <div
-                className="flex transition-transform duration-700 ease-in-out"
-                style={{ transform: `translateX(-${hotIndex * 100}%)` }}
+                className={`flex ${animating ? "transition-transform duration-700 ease-in-out" : ""}`}
+                style={{ transform: `translateX(-${innerIdx * 100}%)` }}
+                onTransitionEnd={handleTransitionEnd}
               >
-                {hotProducts.map((product) => (
-                  <div key={product.id} className="w-full shrink-0">
+                {extendedSlides.map((product, i) => (
+                  <div key={`${product.id}-${i}`} className="w-full shrink-0">
                     <div className="grid grid-cols-1 md:grid-cols-12 gap-6 items-center">
                       <div className="md:col-span-4 relative aspect-square w-full max-w-[280px] mx-auto md:max-w-none rounded-2xl overflow-hidden border-2 border-orange-200 bg-slate-800 shadow-md group">
                         <img
