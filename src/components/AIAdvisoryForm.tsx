@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { Sparkles, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -8,10 +8,18 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { analyzeAI, type AnalyzeParams } from "@/lib/api";
 import type { LiveProduct } from "@/lib/products";
 import { AIResults, type AIAnalysis } from "@/components/AIResults";
+import { usePersistedState } from "@/lib/store";
 
 const CATEGORY_OPTIONS = ["Phone", "Tablet", "Laptop"];
 
 interface AIAdvisoryFormProps {
+  /**
+   * Unique key for this form instance's persisted state (e.g. "home-ai" or
+   * `${category}-${brand}-ai`). All fields + the last AI result are kept
+   * alive under this key, so navigating to a product detail page and back
+   * doesn't reset the form or lose the results.
+   */
+  persistKey: string;
   /** Full live product list — used to derive category-wide storage/condition options when no optionsPool is given. */
   allProducts: LiveProduct[];
   /** Pass this on a brand page to lock the category and hide the selector. */
@@ -27,6 +35,7 @@ interface AIAdvisoryFormProps {
 }
 
 export function AIAdvisoryForm({
+  persistKey,
   allProducts,
   fixedCategory,
   optionsPool,
@@ -36,14 +45,25 @@ export function AIAdvisoryForm({
   modelPlaceholder = 'e.g. "iPhone 14 Pro" or "Galaxy S23"',
   anchorId,
 }: AIAdvisoryFormProps) {
-  const [category, setCategory] = useState(fixedCategory ?? "Phone");
-  const [budget, setBudget] = useState(defaultBudget);
-  const [minBattery, setMinBattery] = useState(0);
-  const [condition, setCondition] = useState("any");
-  const [aiModel, setAiModel] = useState("");
-  const [aiRoms, setAiRoms] = useState<string[]>([]);
-  const [aiUrgency, setAiUrgency] = useState("flexible");
-  const [aiResult, setAiResult] = useState<AIAnalysis | null>(null);
+  const [formState, setFormState] = usePersistedState(persistKey, {
+    category: fixedCategory ?? "Phone",
+    budget: defaultBudget,
+    minBattery: 0,
+    condition: "any",
+    aiModel: "",
+    aiRoms: [] as string[],
+    aiUrgency: "flexible",
+    aiResult: null as AIAnalysis | null,
+  });
+  const { category, budget, minBattery, condition, aiModel, aiRoms, aiUrgency, aiResult } = formState;
+
+  const setCategory = (value: string) => setFormState((prev) => ({ ...prev, category: value }));
+  const setBudget = (value: number) => setFormState((prev) => ({ ...prev, budget: value }));
+  const setMinBattery = (value: number) => setFormState((prev) => ({ ...prev, minBattery: value }));
+  const setCondition = (value: string) => setFormState((prev) => ({ ...prev, condition: value }));
+  const setAiModel = (value: string) => setFormState((prev) => ({ ...prev, aiModel: value }));
+  const setAiUrgency = (value: string) => setFormState((prev) => ({ ...prev, aiUrgency: value }));
+  const setAiResult = (value: AIAnalysis | null) => setFormState((prev) => ({ ...prev, aiResult: value }));
 
   const pool = useMemo(() => {
     if (optionsPool) return optionsPool;
@@ -63,7 +83,10 @@ export function AIAdvisoryForm({
   }, [pool]);
 
   const toggleRom = (rom: string) => {
-    setAiRoms((prev) => (prev.includes(rom) ? prev.filter((r) => r !== rom) : [...prev, rom]));
+    setFormState((prev) => ({
+      ...prev,
+      aiRoms: prev.aiRoms.includes(rom) ? prev.aiRoms.filter((r) => r !== rom) : [...prev.aiRoms, rom],
+    }));
   };
 
   const aiMutation = useMutation({

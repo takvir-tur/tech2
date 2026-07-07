@@ -1,9 +1,9 @@
-import { createFileRoute, Link } from "@tanstack/react-router";
+import { createFileRoute, Link, useRouter } from "@tanstack/react-router";
 import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { ChevronLeft, ExternalLink, ShieldCheck, Box, AlertCircle, Loader2 } from "lucide-react";
+import { ArrowLeft, ExternalLink, ShieldCheck, Box, AlertCircle, Loader2 } from "lucide-react";
 import { fetchLiveProducts } from "@/lib/api";
-import { enrichProduct, formatPrice } from "@/lib/products";
+import { enrichProduct, formatPrice, type LiveProduct } from "@/lib/products";
 
 export const Route = createFileRoute("/$category/$brand_/product")({
   validateSearch: (search: Record<string, unknown>) => ({
@@ -14,9 +14,19 @@ export const Route = createFileRoute("/$category/$brand_/product")({
   component: ProductDetail,
 });
 
+/** Sorts storage strings like "128GB", "1TB" in ascending capacity order. */
+function storageSortValue(s: string): number {
+  const match = s.match(/^(\d+)\s*(GB|TB)$/i);
+  if (!match) return 0;
+  const amount = parseInt(match[1], 10);
+  return match[2].toUpperCase() === "TB" ? amount * 1024 : amount;
+}
+
 function ProductDetail() {
   const { category, brand } = Route.useParams();
   const { name, source, price } = Route.useSearch();
+  const router = useRouter();
+  const navigate = Route.useNavigate();
 
   const {
     data: rawProducts,
@@ -42,16 +52,61 @@ function ProductDetail() {
     );
   }, [products, name, source, price]);
 
+  // Every other real listing that shares this exact product name — used to
+  // offer a storage-variant switcher when the scraped data has more than
+  // one capacity for the same model.
+  const sameNameListings = useMemo(() => {
+    if (!product) return [];
+    return products.filter((p) => p.name.toLowerCase() === product.name.toLowerCase());
+  }, [products, product]);
+
+  const storageVariants = useMemo(() => {
+    const set = new Set<string>();
+    sameNameListings.forEach((p) => p.storage && set.add(p.storage));
+    return Array.from(set).sort((a, b) => storageSortValue(a) - storageSortValue(b));
+  }, [sameNameListings]);
+
+  const pickListingForStorage = (storage: string): LiveProduct | undefined => {
+    const matches = sameNameListings.filter((p) => p.storage === storage);
+    if (matches.length === 0) return undefined;
+    // Prefer the cheapest real listing for that capacity.
+    return [...matches].sort((a, b) => (a.price ?? Infinity) - (b.price ?? Infinity))[0];
+  };
+
+  const handleStorageSelect = (storage: string) => {
+    const target = pickListingForStorage(storage);
+    if (!target) return;
+    // replace: true so toggling storage variants doesn't pile up history
+    // entries — the back button should return to wherever the user came
+    // from, not to an earlier storage selection on this same page.
+    navigate({
+      search: { name: target.name, source: target.source, price: target.price ?? undefined },
+      replace: true,
+    });
+  };
+
+  const goBack = () => {
+    router.history.back();
+  };
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50/40 to-rose-50/50 font-sans text-slate-900 antialiased">
       <main className="mx-auto max-w-3xl px-4 py-10 sm:px-6 lg:px-8 space-y-6">
-        <Link
-          to="/$category/$brand"
-          params={{ category, brand }}
-          className="inline-flex items-center gap-2 text-xs font-black uppercase tracking-wider text-slate-500 hover:text-blue-600 transition"
-        >
-          <ChevronLeft className="h-4 w-4 stroke-[3]" /> Back to {brand} {category}s
-        </Link>
+        <div className="flex items-center justify-between gap-3">
+          <button
+            onClick={goBack}
+            className="inline-flex items-center gap-2 text-xs font-black uppercase tracking-wider text-slate-500 hover:text-blue-600 transition"
+          >
+            <ArrowLeft className="h-4 w-4 stroke-[3]" /> Back
+          </button>
+          <Link
+            to="/$category/$brand"
+            params={{ category, brand }}
+            className="text-xs font-bold text-slate-400 hover:text-blue-600 transition"
+          >
+            {brand} {category}s hub →
+          </Link>
+        </div>
 
         {isLoading && (
           <div className="flex items-center justify-center gap-2 rounded-2xl border-2 border-dashed border-slate-300 bg-white p-10 text-slate-500">
@@ -95,6 +150,32 @@ function ProductDetail() {
                   </span>
                 )}
               </div>
+
+              {storageVariants.length > 1 && (
+                <div className="space-y-1.5">
+                  <span className="text-xs font-black uppercase tracking-wider text-slate-400">
+                    Storage — {storageVariants.length} variants available
+                  </span>
+                  <div className="flex flex-wrap gap-2">
+                    {storageVariants.map((storage) => (
+                      <button
+                        key={storage}
+                        onClick={() => handleStorageSelect(storage)}
+                        className={`px-3.5 py-1.5 rounded-full text-sm font-bold border transition ${
+                          product.storage === storage
+                            ? "bg-blue-600 border-blue-600 text-white"
+                            : "bg-white border-slate-300 text-slate-600 hover:border-blue-400"
+                        }`}
+                      >
+                        {storage}
+                      </button>
+                    ))}
+                  </div>
+                  <p className="text-[11px] text-slate-400">
+                    Price/condition/source update to match the real listing for that capacity.
+                  </p>
+                </div>
+              )}
 
               <div className="grid grid-cols-2 gap-3 text-sm font-bold text-slate-600">
                 <div className="flex items-center gap-2 bg-slate-50 border border-slate-100 rounded-xl p-3">

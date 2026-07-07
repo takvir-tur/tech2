@@ -1,5 +1,6 @@
 import json
 import glob
+import difflib
 from datetime import date
 from pathlib import Path
 from fastapi import FastAPI
@@ -66,6 +67,21 @@ BRAND_PATTERNS = [
     (["hp ", "hewlett"], "HP"),
     (["microsoft", "surface"], "Microsoft"),
 ]
+
+
+def fuzzy_word_in(query_word: str, target_words: list[str], threshold: float = 0.78) -> bool:
+    """
+    True if query_word matches one of target_words closely enough to tolerate
+    a small typo (e.g. "iphoen" -> "iphone"). Purely numeric words (model
+    numbers like "17", "14") must match EXACTLY — fuzzy tolerance there would
+    let "iPhone 17" incorrectly match "iPhone 14" listings just because the
+    strings are similar length.
+    """
+    if query_word.isdigit():
+        return query_word in target_words
+    if query_word in target_words:
+        return True
+    return any(difflib.SequenceMatcher(None, query_word, tw).ratio() >= threshold for tw in target_words)
 
 
 def detect_brand(name: str) -> str:
@@ -247,8 +263,8 @@ def ai_analyze(req: AnalyzeRequest):
 
     # ── Section 1: Same model, all dealers ──────────────────────────────────
     def matches_model(name: str) -> bool:
-        n = name.lower()
-        return all(word in n for word in clean_model.split())
+        target_words = name.lower().split()
+        return all(fuzzy_word_in(qw, target_words) for qw in clean_model.split())
 
     same_model = [i for i in cat_items if matches_model(i.get("product_name", ""))]
 

@@ -1,18 +1,7 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import {
-  Search,
-  Flame,
-  Smartphone,
-  Tablet,
-  Laptop,
-  ChevronLeft,
-  ChevronRight,
-  Info,
-  Loader2,
-} from "lucide-react";
-import { Input } from "@/components/ui/input";
+import { Flame, Smartphone, Tablet, Laptop, ChevronLeft, ChevronRight, Info, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { fetchLiveProducts } from "@/lib/api";
 import { enrichProduct, formatPrice } from "@/lib/products";
@@ -33,9 +22,9 @@ export const Route = createFileRoute("/")({
   component: Home,
 });
 
-function Home() {
-  const [query, setQuery] = useState("");
+const SLIDE_INTERVAL_MS = 5000;
 
+function Home() {
   const {
     data: rawProducts,
     isLoading,
@@ -58,65 +47,29 @@ function Home() {
   }, [products]);
 
   const [hotIndex, setHotIndex] = useState(0);
+  const [isPaused, setIsPaused] = useState(false);
+
   const nextHotDeal = () => setHotIndex((prev) => (prev + 1) % hotProducts.length);
   const prevHotDeal = () => setHotIndex((prev) => (prev - 1 + hotProducts.length) % hotProducts.length);
-  const activeHotProduct = hotProducts[hotIndex];
 
-  const searchSuggestions = useMemo(() => {
-    if (!query.trim()) return [];
-    const q = query.toLowerCase();
-    return products
-      .filter((p) => p.name.toLowerCase().includes(q) || p.brand.toLowerCase().includes(q))
-      .slice(0, 6);
-  }, [query, products]);
+  // Auto-advance the carousel, pausing while the user is hovering over it.
+  useEffect(() => {
+    if (hotProducts.length <= 1 || isPaused) return;
+    const timer = setInterval(() => {
+      setHotIndex((prev) => (prev + 1) % hotProducts.length);
+    }, SLIDE_INTERVAL_MS);
+    return () => clearInterval(timer);
+  }, [hotProducts.length, isPaused]);
+
+  // Clamp the index if the underlying list shrinks (e.g. after a refetch).
+  useEffect(() => {
+    if (hotIndex >= hotProducts.length && hotProducts.length > 0) {
+      setHotIndex(0);
+    }
+  }, [hotProducts.length, hotIndex]);
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50/40 to-rose-50/50 font-sans text-slate-900 antialiased selection:bg-rose-200">
-      {/* High Visibility Header */}
-      <header className="sticky top-0 z-40 w-full border-b border-blue-100 bg-slate-900/85 backdrop-blur shadow-sm">
-        <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-4 sm:px-6 lg:px-8">
-          <span className="bg-gradient-to-r from-blue-600 via-rose-500 to-amber-500 bg-clip-text text-2xl font-black uppercase tracking-wider text-transparent">
-            Tech 2
-          </span>
-          <div className="relative w-full max-w-md mx-4">
-            <Search className="absolute top-1/2 left-4 h-4 w-4 -translate-y-1/2 text-slate-400" />
-            <Input
-              type="search"
-              placeholder="Search live scraped listings..."
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              className="pl-10 rounded-full bg-slate-100/80 border-slate-700/60 focus-visible:ring-2 focus-visible:ring-blue-500 font-medium text-slate-900"
-            />
-            {query && (
-              <div className="absolute top-full mt-2 w-full bg-slate-800 border rounded-xl shadow-lg z-50 overflow-hidden">
-                {isLoading ? (
-                  <div className="px-4 py-3 text-sm text-slate-300">Loading live listings…</div>
-                ) : searchSuggestions.length === 0 ? (
-                  <div className="px-4 py-3 text-sm text-slate-400">No matching listings found.</div>
-                ) : (
-                  searchSuggestions.map((product) => (
-                    <ProductLink
-                      key={product.id}
-                      product={product}
-                      onClick={() => setQuery("")}
-                      className="flex w-full items-center justify-between gap-3 border-b border-slate-700 bg-slate-800 px-4 py-3 text-left text-white transition last:border-0 hover:bg-slate-700"
-                    >
-                      <div>
-                        <div className="font-semibold">{product.name}</div>
-                        <div className="text-xs text-slate-400">
-                          {formatPrice(product.price)} · {product.source}
-                        </div>
-                      </div>
-                      <Info className="h-3.5 w-3.5 shrink-0 text-blue-400" />
-                    </ProductLink>
-                  ))
-                )}
-              </div>
-            )}
-          </div>
-        </div>
-      </header>
-
       <main className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8 space-y-12">
         {isError && (
           <div className="rounded-2xl border-2 border-dashed border-rose-300 bg-rose-50 p-6 text-center text-sm font-bold text-rose-600">
@@ -132,81 +85,105 @@ function Home() {
         )}
 
         {/* ==========================================================
-            1. HOT DEALS CAROUSEL SPOTLIGHT (live data)
+            1. HOT DEALS — sliding, auto-advancing carousel
             ========================================================== */}
-        {activeHotProduct && (
-          <section className="relative overflow-hidden rounded-3xl border-2 border-amber-400 bg-gradient-to-br from-amber-400/20 via-white to-rose-400/10 p-6 md:p-8 shadow-xl shadow-amber-500/10 transition-all duration-300">
+        {hotProducts.length > 0 && (
+          <section
+            className="relative overflow-hidden rounded-3xl border-2 border-amber-400 bg-gradient-to-br from-amber-400/20 via-white to-rose-400/10 p-6 md:p-8 shadow-xl shadow-amber-500/10"
+            onMouseEnter={() => setIsPaused(true)}
+            onMouseLeave={() => setIsPaused(false)}
+          >
             <div className="flex items-center justify-between mb-5">
               <div className="flex items-center gap-2">
                 <span className="flex items-center gap-1.5 rounded-full bg-gradient-to-r from-red-500 via-orange-500 to-amber-500 px-4 py-1.5 text-xs font-black uppercase tracking-widest text-white shadow-md">
                   <Flame className="h-4 w-4 fill-current animate-bounce" /> Premium Live Picks
                 </span>
-                <span className="text-xs text-slate-600 font-bold font-mono">
-                  ({hotIndex + 1}/{hotProducts.length})
-                </span>
+              </div>
+              <div className="flex items-center gap-1.5">
+                {hotProducts.map((_, i) => (
+                  <button
+                    key={i}
+                    onClick={() => setHotIndex(i)}
+                    aria-label={`Go to slide ${i + 1}`}
+                    className={`h-1.5 rounded-full transition-all ${
+                      i === hotIndex ? "w-6 bg-orange-500" : "w-1.5 bg-orange-200 hover:bg-orange-300"
+                    }`}
+                  />
+                ))}
               </div>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-12 gap-6 items-center">
-              <div className="md:col-span-4 relative aspect-square w-full max-w-[280px] mx-auto md:max-w-none rounded-2xl overflow-hidden border-2 border-orange-200 bg-slate-800 shadow-md group">
-                <img
-                  src={activeHotProduct.image}
-                  alt={activeHotProduct.name}
-                  className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105"
-                />
-                {activeHotProduct.condition && (
-                  <div className="absolute top-3 right-3 bg-red-500 text-white font-extrabold text-[10px] uppercase px-2.5 py-1 rounded-full shadow-md">
-                    {activeHotProduct.condition}
-                  </div>
-                )}
-              </div>
+            <div className="overflow-hidden">
+              <div
+                className="flex transition-transform duration-700 ease-in-out"
+                style={{ transform: `translateX(-${hotIndex * 100}%)` }}
+              >
+                {hotProducts.map((product) => (
+                  <div key={product.id} className="w-full shrink-0">
+                    <div className="grid grid-cols-1 md:grid-cols-12 gap-6 items-center">
+                      <div className="md:col-span-4 relative aspect-square w-full max-w-[280px] mx-auto md:max-w-none rounded-2xl overflow-hidden border-2 border-orange-200 bg-slate-800 shadow-md group">
+                        <img
+                          src={product.image}
+                          alt={product.name}
+                          className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105"
+                        />
+                        {product.condition && (
+                          <div className="absolute top-3 right-3 bg-red-500 text-white font-extrabold text-[10px] uppercase px-2.5 py-1 rounded-full shadow-md">
+                            {product.condition}
+                          </div>
+                        )}
+                      </div>
 
-              <div className="md:col-span-8 space-y-4 flex flex-col justify-center">
-                <div className="flex flex-wrap items-baseline justify-between gap-2 border-b border-orange-100 pb-2">
-                  <div>
-                    <span className="text-[11px] font-black uppercase tracking-widest text-rose-500">
-                      {activeHotProduct.brand} Highlight
-                    </span>
-                    <h2 className="text-2xl md:text-3xl font-black text-slate-900 tracking-tight">
-                      {activeHotProduct.name}
-                    </h2>
-                  </div>
-                  <div className="text-right">
-                    <p className="text-3xl font-black text-orange-600 font-mono tracking-tight">
-                      {formatPrice(activeHotProduct.price)}
-                    </p>
-                    {activeHotProduct.storage && (
-                      <span className="inline-block text-[11px] font-extrabold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-200">
-                        {activeHotProduct.storage}
-                      </span>
-                    )}
-                  </div>
-                </div>
+                      <div className="md:col-span-8 space-y-4 flex flex-col justify-center">
+                        <div className="flex flex-wrap items-baseline justify-between gap-2 border-b border-orange-100 pb-2">
+                          <div>
+                            <span className="text-[11px] font-black uppercase tracking-widest text-rose-500">
+                              {product.brand} Highlight
+                            </span>
+                            <h2 className="text-2xl md:text-3xl font-black text-slate-900 tracking-tight">
+                              {product.name}
+                            </h2>
+                          </div>
+                          <div className="text-right">
+                            <p className="text-3xl font-black text-orange-600 font-mono tracking-tight">
+                              {formatPrice(product.price)}
+                            </p>
+                            {product.storage && (
+                              <span className="inline-block text-[11px] font-extrabold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-200">
+                                {product.storage}
+                              </span>
+                            )}
+                          </div>
+                        </div>
 
-                <div className="flex flex-wrap gap-4 text-xs font-bold text-slate-600 bg-slate-100 p-2.5 rounded-lg border border-slate-200">
-                  <div>
-                    🔋 Battery:{" "}
-                    <span className="text-slate-900 font-black">
-                      {activeHotProduct.battery != null ? `${activeHotProduct.battery}%` : "N/A"}
-                    </span>
-                  </div>
-                  <div>
-                    🛒 Source: <span className="text-blue-600 font-extrabold">{activeHotProduct.source}</span>
-                  </div>
-                  <div>
-                    📦 Box:{" "}
-                    <span className="text-slate-900 font-black">
-                      {activeHotProduct.box === true ? "Included" : activeHotProduct.box === false ? "Not included" : "N/A"}
-                    </span>
-                  </div>
-                </div>
+                        <div className="flex flex-wrap gap-4 text-xs font-bold text-slate-600 bg-slate-100 p-2.5 rounded-lg border border-slate-200">
+                          <div>
+                            🔋 Battery:{" "}
+                            <span className="text-slate-900 font-black">
+                              {product.battery != null ? `${product.battery}%` : "N/A"}
+                            </span>
+                          </div>
+                          <div>
+                            🛒 Source: <span className="text-blue-600 font-extrabold">{product.source}</span>
+                          </div>
+                          <div>
+                            📦 Box:{" "}
+                            <span className="text-slate-900 font-black">
+                              {product.box === true ? "Included" : product.box === false ? "Not included" : "N/A"}
+                            </span>
+                          </div>
+                        </div>
 
-                <ProductLink
-                  product={activeHotProduct}
-                  className="inline-flex items-center gap-2 self-start rounded-xl bg-blue-600 px-5 py-2.5 text-sm font-black text-white shadow-md transition hover:bg-blue-700"
-                >
-                  View Details <Info className="h-4 w-4" />
-                </ProductLink>
+                        <ProductLink
+                          product={product}
+                          className="inline-flex items-center gap-2 self-start rounded-xl bg-blue-600 px-5 py-2.5 text-sm font-black text-white shadow-md transition hover:bg-blue-700"
+                        >
+                          View Details <Info className="h-4 w-4" />
+                        </ProductLink>
+                      </div>
+                    </div>
+                  </div>
+                ))}
               </div>
             </div>
 
@@ -308,6 +285,7 @@ function Home() {
             </p>
           </div>
           <AIAdvisoryForm
+            persistKey="home-ai"
             allProducts={products}
             title="AI Advisory Search Engine"
             subtitle="Tell it the exact model you want — it compares real dealers and tells you whether to buy now or wait."

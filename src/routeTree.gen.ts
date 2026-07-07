@@ -9,11 +9,17 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
+import { Route as SearchRouteImport } from './routes/search'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as CategoryIndexRouteImport } from './routes/$category.index'
 import { Route as CategoryBrandRouteImport } from './routes/$category.$brand'
 import { Route as CategoryBrandProductRouteImport } from './routes/$category.$brand_.product'
 
+const SearchRoute = SearchRouteImport.update({
+  id: '/search',
+  path: '/search',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
@@ -37,12 +43,14 @@ const CategoryBrandProductRoute = CategoryBrandProductRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/search': typeof SearchRoute
   '/$category/$brand': typeof CategoryBrandRoute
   '/$category/': typeof CategoryIndexRoute
   '/$category/$brand/product': typeof CategoryBrandProductRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/search': typeof SearchRoute
   '/$category/$brand': typeof CategoryBrandRoute
   '/$category': typeof CategoryIndexRoute
   '/$category/$brand/product': typeof CategoryBrandProductRoute
@@ -50,6 +58,7 @@ export interface FileRoutesByTo {
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/search': typeof SearchRoute
   '/$category/$brand': typeof CategoryBrandRoute
   '/$category/': typeof CategoryIndexRoute
   '/$category/$brand_/product': typeof CategoryBrandProductRoute
@@ -58,14 +67,21 @@ export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
+    | '/search'
     | '/$category/$brand'
     | '/$category/'
     | '/$category/$brand/product'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/$category/$brand' | '/$category' | '/$category/$brand/product'
+  to:
+    | '/'
+    | '/search'
+    | '/$category/$brand'
+    | '/$category'
+    | '/$category/$brand/product'
   id:
     | '__root__'
     | '/'
+    | '/search'
     | '/$category/$brand'
     | '/$category/'
     | '/$category/$brand_/product'
@@ -73,6 +89,7 @@ export interface FileRouteTypes {
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  SearchRoute: typeof SearchRoute
   CategoryBrandRoute: typeof CategoryBrandRoute
   CategoryIndexRoute: typeof CategoryIndexRoute
   CategoryBrandProductRoute: typeof CategoryBrandProductRoute
@@ -80,6 +97,13 @@ export interface RootRouteChildren {
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
+    '/search': {
+      id: '/search'
+      path: '/search'
+      fullPath: '/search'
+      preLoaderRoute: typeof SearchRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/': {
       id: '/'
       path: '/'
@@ -113,6 +137,7 @@ declare module '@tanstack/react-router' {
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  SearchRoute: SearchRoute,
   CategoryBrandRoute: CategoryBrandRoute,
   CategoryIndexRoute: CategoryIndexRoute,
   CategoryBrandProductRoute: CategoryBrandProductRoute,

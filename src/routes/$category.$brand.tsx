@@ -1,5 +1,5 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { ChevronLeft, SlidersHorizontal, X, AlertCircle, Loader2, Sparkles, ArrowRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -10,6 +10,7 @@ import { fetchLiveProducts } from "@/lib/api";
 import { enrichProduct } from "@/lib/products";
 import { ProductCard } from "@/components/ProductCard";
 import { AIAdvisoryForm } from "@/components/AIAdvisoryForm";
+import { usePersistedState } from "@/lib/store";
 
 export const Route = createFileRoute("/$category/$brand")({
   component: BrandProductDirectory,
@@ -39,9 +40,15 @@ function BrandProductDirectory() {
   );
 
   // ── Sidebar filters (operate on real fields only) ─────────────────
-  const [budget, setBudget] = useState<number>(220000);
-  const [minBattery, setMinBattery] = useState<number>(0);
-  const [condition, setCondition] = useState<string>("any");
+  const [filters, setFilters] = usePersistedState(`${category}-${brand}-filters`, {
+    budget: 220000,
+    minBattery: 0,
+    condition: "any",
+  });
+  const { budget, minBattery, condition } = filters;
+  const setBudget = (value: number) => setFilters((prev) => ({ ...prev, budget: value }));
+  const setMinBattery = (value: number) => setFilters((prev) => ({ ...prev, minBattery: value }));
+  const setCondition = (value: string) => setFilters((prev) => ({ ...prev, condition: value }));
 
   const availableConditions = useMemo(() => {
     const set = new Set<string>();
@@ -213,6 +220,7 @@ function BrandProductDirectory() {
         {/* AI Advisory stays right here on the brand page too — not removed,
             just also now available up on the homepage. */}
         <AIAdvisoryForm
+          persistKey={`${category}-${brand}-ai`}
           allProducts={products}
           fixedCategory={category}
           optionsPool={brandCategoryProducts}
