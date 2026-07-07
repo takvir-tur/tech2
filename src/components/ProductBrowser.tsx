@@ -143,6 +143,7 @@ export function ProductBrowser({
 
   const totalPages = Math.max(1, Math.ceil(sorted.length / PAGE_SIZE));
   const pageItems = sorted.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE);
+  const gridGhostCount = pageItems.length > 0 ? PAGE_SIZE - pageItems.length : 0;
 
   const [modalProduct, setModalProduct] = useState<LiveProduct | null>(null);
 
@@ -306,6 +307,9 @@ export function ProductBrowser({
                     </p>
                   </div>
                 </button>
+              ))}
+              {Array.from({ length: gridGhostCount }, (_, i) => (
+                <div key={`grid-ghost-${i}`} aria-hidden className="invisible aspect-[4/3]" />
               ))}
             </div>
           )}
