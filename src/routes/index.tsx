@@ -60,15 +60,15 @@ const CURATED_HOT_DEALS: LiveProduct[] = [
     image: getProductImage("Samsung S24 Ultra 5G"),
   },
   {
-    name: "Apple MacBook Air 13.6'' M3 8-CPU 8-GPU 8GB/256GB Space Gray (Used)",
+    name: "Apple MacBook Air 13.6'' M3 (8-CPU 8-GPU 8GB/256GB) Space Gray",
     price: 114000,
     battery: 100,
-    condition: "Used",
-    warranty: null,
+    condition: "Like New",
+    warranty: "Official Apple Warranty",
     box: true,
-    storage: "8GB/256GB",
+    storage: "256GB",
     source: "tech2",
-    link: "#",
+    link: "",
     category: "laptop",
     id: "hot-macbook-air-m3",
     brand: "Apple",
@@ -90,21 +90,22 @@ const CURATED_HOT_DEALS: LiveProduct[] = [
     image: getProductImage("iPad 11th Gen"),
   },
   {
-    name: "Samsung Galaxy Tab S9 FE 6/128GB Gray (Used)",
-    price: 55000,
-    battery: 92,
+    name: "Samsung TAB S10 Lite 5G 6/128GB Gray (Used) - SM-X400",
+    price: 33000,
+    battery: null,
     condition: "Used",
     warranty: null,
     box: true,
-    storage: "6/128GB",
-    source: "tech2",
-    link: "#",
+    storage: "128GB",
+    source: "Apple Gadgets",
+    link: "https://www.applegadgetsbd.com/contact-us",
     category: "tablet",
-    id: "hot-galaxy-tab-s9-fe",
+    id: "hot-samsung-tab-s10-lite",
     brand: "Samsung",
     image: getProductImage("Samsung Galaxy Tab S9 FE"),
   },
 ];
+
 function Home() {
   const {
     data: rawProducts,
@@ -117,13 +118,12 @@ function Home() {
   });
 
   const products = useMemo(() => (rawProducts ?? []).map((p, i) => enrichProduct(p, i)), [rawProducts]);
-  
 
   // "Hot Deals" — curated second-hand picks, one per category, within
   // realistic price bands for the Bangladeshi second-hand market.
   const hotProducts = CURATED_HOT_DEALS;
 
-    const n = hotProducts.length;
+  const n = hotProducts.length;
 
   // Infinite-loop carousel using the clone trick:
   //   extendedSlides = [clone_of_last, ...real_slides, clone_of_first]
