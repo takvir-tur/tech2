@@ -6,7 +6,6 @@ import { Button } from "@/components/ui/button";
 import { fetchLiveProducts } from "@/lib/api";
 import { enrichProduct, formatPrice, getProductImage, type LiveProduct } from "@/lib/products";
 import { ProductLink } from "@/components/ProductLink";
-import { AIAdvisoryForm } from "@/components/AIAdvisoryForm";
 
 export const Route = createFileRoute("/")({
   head: () => ({
@@ -22,12 +21,8 @@ export const Route = createFileRoute("/")({
   component: Home,
 });
 
-const SLIDE_INTERVAL_MS = 2000;
+const SLIDE_INTERVAL_MS = 5000;
 
-/**
- * Curated "Hot Deals" — one best-value pick per category, sourced from
- * real scraped inventory, within the specified second-hand price bands.
- */
 const CURATED_HOT_DEALS: LiveProduct[] = [
   {
     name: "iPhone Air 256GB Cloud White e-Sim (Used)",
@@ -117,19 +112,9 @@ function Home() {
     staleTime: 60_000,
   });
 
-  const products = useMemo(() => (rawProducts ?? []).map((p, i) => enrichProduct(p, i)), [rawProducts]);
-
-  // "Hot Deals" — curated second-hand picks, one per category, within
-  // realistic price bands for the Bangladeshi second-hand market.
   const hotProducts = CURATED_HOT_DEALS;
-
   const n = hotProducts.length;
 
-  // Infinite-loop carousel using the clone trick:
-  //   extendedSlides = [clone_of_last, ...real_slides, clone_of_first]
-  // innerIdx 1..n = real slides; 0 = clone of last; n+1 = clone of first.
-  // On transitionend at a clone we instantly teleport (no CSS transition)
-  // to the matching real slide, making the loop seamless in both directions.
   const extendedSlides = useMemo(
     () => [hotProducts[n - 1], ...hotProducts, hotProducts[0]],
     [hotProducts, n],
@@ -139,7 +124,6 @@ function Home() {
   const [animating, setAnimating] = useState(true);
   const [isPaused, setIsPaused] = useState(false);
 
-  // The dot that should appear "active" — always maps to a real slide index.
   const dotIndex = ((innerIdx - 1) % n + n) % n;
 
   const nextHotDeal = useCallback(() => {
@@ -157,20 +141,16 @@ function Home() {
     setInnerIdx(i + 1);
   }, []);
 
-  // After the CSS transition lands on a clone, teleport to the real slide.
   const handleTransitionEnd = useCallback(() => {
     if (innerIdx === 0) {
-      // Arrived at clone-of-last → jump to real last without animation.
       setAnimating(false);
       setInnerIdx(n);
     } else if (innerIdx === n + 1) {
-      // Arrived at clone-of-first → jump to real first without animation.
       setAnimating(false);
       setInnerIdx(1);
     }
   }, [innerIdx, n]);
 
-  // Re-enable animation one paint cycle after a teleport so the next swipe animates.
   const rafRef = useRef<number | null>(null);
   useEffect(() => {
     if (!animating) {
@@ -183,9 +163,6 @@ function Home() {
     };
   }, [animating]);
 
-  // Pause auto-advance while the tab is hidden, and snap back to a valid
-  // slide when the tab becomes visible again (avoids blank-slide drift caused
-  // by the browser throttling CSS transitions in background tabs).
   useEffect(() => {
     const onVisibilityChange = () => {
       if (document.visibilityState === "visible") {
@@ -197,8 +174,6 @@ function Home() {
     return () => document.removeEventListener("visibilitychange", onVisibilityChange);
   }, []);
 
-  // Safety clamp: if innerIdx somehow drifts outside [0, n+1] (shouldn't
-  // happen, but can in slow/throttled environments), snap back immediately.
   useEffect(() => {
     if (innerIdx < 0 || innerIdx > n + 1) {
       setAnimating(false);
@@ -206,7 +181,6 @@ function Home() {
     }
   }, [innerIdx, n]);
 
-  // Auto-advance, paused on hover.
   useEffect(() => {
     if (n <= 1 || isPaused) return;
     const timer = setInterval(nextHotDeal, SLIDE_INTERVAL_MS);
@@ -214,8 +188,8 @@ function Home() {
   }, [n, isPaused, nextHotDeal]);
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50/40 to-rose-50/50 font-sans text-slate-900 antialiased selection:bg-rose-200">
-      <main className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8 space-y-12">
+    <div className="min-h-screen bg-gradient-to-b from-slate-50 via-blue-50/40 to-rose-50/50 font-sans text-slate-900 antialiased selection:bg-rose-200">
+      <main className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8 space-y-10">
         {isError && (
           <div className="rounded-2xl border-2 border-dashed border-rose-300 bg-rose-50 p-6 text-center text-sm font-bold text-rose-600">
             Couldn't reach the live inventory API. Make sure the backend is running (
@@ -229,9 +203,9 @@ function Home() {
           </div>
         )}
 
-        {/* ==========================================================
-            1. HOT DEALS — sliding, auto-advancing carousel
-            ========================================================== */}
+        {/* ============================================================
+            1. HOT DEALS — unchanged carousel
+            ============================================================ */}
         {hotProducts.length > 0 && (
           <section
             className="relative overflow-hidden rounded-3xl border-2 border-amber-400 bg-gradient-to-br from-amber-400/20 via-white to-rose-400/10 p-6 md:p-8 shadow-xl shadow-amber-500/10"
@@ -344,9 +318,72 @@ function Home() {
           </section>
         )}
 
-        {/* ==========================================================
-            2. THE MAJOR CATEGORIES HUB (ROUTING TRIGGERS)
-            ========================================================== */}
+        {/* ============================================================
+            2. AI ADVISOR TITLE CARD  — Apple-style: text above, photo below
+            ============================================================ */}
+        <section className="space-y-4">
+          {/* ── Headline text — on plain page background, left-aligned ── */}
+          <div className="space-y-0.5 pl-1">
+            <p style={{ fontSize: "52px", fontWeight: 900, color: "#111827", letterSpacing: "-0.03em", lineHeight: 1.15 }}>
+              CAN'T DECIDE !
+            </p>
+            <p style={{ fontSize: "13px", fontWeight: 800, lineHeight: 1.4 }}>
+              <span style={{ marginRight: "32px" }}>
+                <span style={{ color: "#f41212" }}>WHAT</span>
+                <span style={{ color: "#31343b" }}> TO BUY !</span>
+              </span>
+            
+              <span style={{ marginRight: "32px" }}>
+                <span style={{ color: "#f41212" }}>WHEN</span>
+                <span style={{ color: "#31343b" }}> TO BUY !</span>
+              </span>
+
+              <span>
+                <span style={{ color: "#f41212" }}>WHERE</span>
+                <span style={{ color: "#31343b" }}> TO BUY !</span>
+              </span>
+            </p>
+          </div>
+
+          {/* ── Wide photo card — same proportions as reference ── */}
+          <Link to="/ai" className="block group">
+            <div
+              className="relative w-full overflow-hidden rounded-3xl shadow-lg"
+              style={{ aspectRatio: "16 / 5.5" }}
+            >
+              {/* Photo — replace src/assets/aicard.jpg with your own image */}
+              <img
+                src="https://images.unsplash.com/photo-1677442136019-21780ecad995?w=1600&auto=format&fit=crop&q=80"
+                alt="AI Advisor"
+                className="absolute inset-0 h-full w-full object-cover transition-transform duration-700 group-hover:scale-[1.03]"
+              />
+
+              {/* Dark gradient overlay so text is readable */}
+              <div className="absolute inset-0 bg-gradient-to-r from-black/60 via-black/20 to-transparent" />
+
+              {/* "LET ME HELP !" — rainbow gradient text, bottom-left */}
+              <div className="absolute top-45 left-8">
+                <span
+                  style={{
+                    fontSize: "40px",
+                    fontWeight: 900,
+                    letterSpacing: "0.06em",
+                    background: "linear-gradient(90deg, #ef4444 0%, #f97316 20%, #eab308 40%, #22c55e 60%, #3b82f6 80%, #a855f7 100%)",
+                    WebkitBackgroundClip: "text",
+                    WebkitTextFillColor: "transparent",
+                    backgroundClip: "text",
+                  }}
+                >
+                  LET ME HELP !
+                </span>
+              </div>
+            </div>
+          </Link>
+        </section>
+
+        {/* ============================================================
+            3. CATEGORY HUB
+            ============================================================ */}
         <section className="space-y-4">
           <div>
             <h3 className="text-xs font-black uppercase tracking-widest text-blue-600">Step 1: Choose Core Pipeline</h3>
@@ -417,25 +454,6 @@ function Home() {
               </div>
             </div>
           </Link>
-        </section>
-
-        {/* ==========================================================
-            3. AI ADVISORY SEARCH — available right here too, no need
-               to drill into a category/brand first.
-            ========================================================== */}
-        <section id="ai-advisory" className="space-y-3 scroll-mt-24">
-          <div>
-            <h3 className="text-xs font-black uppercase tracking-widest text-blue-600">Or Skip Straight To The AI Advisor</h3>
-            <p className="text-sm text-slate-500 font-medium">
-              Don't want to browse manually? Tell the AI what you want and let it compare real listings for you.
-            </p>
-          </div>
-          <AIAdvisoryForm
-            persistKey="home-ai"
-            allProducts={products}
-            title="AI Advisory Search Engine"
-            subtitle="Tell it the exact model you want — it compares real dealers and tells you whether to buy now or wait."
-          />
         </section>
       </main>
 

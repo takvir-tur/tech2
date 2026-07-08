@@ -1,11 +1,10 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
 import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { Sparkles, ArrowRight } from "lucide-react";
 import { fetchLiveProducts } from "@/lib/api";
 import { enrichProduct } from "@/lib/products";
 import { ProductBrowser } from "@/components/ProductBrowser";
-import { AINudgePopup } from "@/components/AINudgePopup";
-import { AIAdvisoryForm } from "@/components/AIAdvisoryForm";
 
 export const Route = createFileRoute("/$category/")({
   component: CategoryPage,
@@ -47,18 +46,19 @@ function CategoryPage() {
           showBrandNav
         />
 
-        <section id="ai-advisory" className="scroll-mt-24">
-          <AIAdvisoryForm
-            persistKey={`${category}-ai`}
-            allProducts={products}
-            fixedCategory={category}
-            optionsPool={categoryProducts}
-            modelPlaceholder={`e.g. "${category === "Phone" ? "Galaxy S23" : category} model"`}
-          />
-        </section>
+        <Link
+          to="/ai"
+          className="group flex items-center justify-between gap-3 rounded-2xl border border-blue-300 bg-gradient-to-r from-blue-50 via-indigo-50 to-blue-50 px-4 py-2.5 shadow-sm transition hover:border-blue-400 hover:shadow-md"
+        >
+          <span className="flex items-center gap-2 text-sm font-bold text-blue-700">
+            <Sparkles className="h-4 w-4 text-blue-500" />
+            Not sure which one to pick? Let the AI Advisor compare deals for you.
+          </span>
+          <span className="flex items-center gap-1 text-xs font-black uppercase tracking-wide text-blue-600 transition-transform group-hover:translate-x-0.5">
+            Try it <ArrowRight className="h-3.5 w-3.5" />
+          </span>
+        </Link>
       </main>
-
-      <AINudgePopup persistKey={`${category}-ai-nudge`} scrollTargetId="ai-advisory" />
     </div>
   );
 }

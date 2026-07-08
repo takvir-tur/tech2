@@ -8,6 +8,7 @@ import {
   Scripts,
 } from "@tanstack/react-router";
 import { useEffect, type ReactNode } from "react";
+import { Sparkles } from "lucide-react";
 
 import appCss from "../styles.css?url";
 import { reportLovableError } from "../lib/lovable-error-reporting";
@@ -123,6 +124,15 @@ function RootComponent() {
       {/* Required: nested routes render here. Removing <Outlet /> breaks all child routes. */}
       <Outlet />
       <SiteFooter />
+
+      {/* Floating AI bot — fixed bottom-left on every page */}
+      <Link
+        to="/ai"
+        aria-label="Open AI Advisor"
+        className="fixed bottom-6 left-6 z-50 flex h-14 w-14 items-center justify-center rounded-full bg-blue-600 text-white shadow-xl ring-2 ring-white hover:bg-blue-700 hover:scale-105 active:scale-95 transition-all duration-200"
+      >
+        <Sparkles className="h-6 w-6" />
+      </Link>
     </QueryClientProvider>
   );
 }

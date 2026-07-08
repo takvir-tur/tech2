@@ -9,7 +9,6 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { fetchLiveProducts } from "@/lib/api";
 import { enrichProduct } from "@/lib/products";
 import { ProductCard } from "@/components/ProductCard";
-import { AIAdvisoryForm } from "@/components/AIAdvisoryForm";
 import { usePersistedState } from "@/lib/store";
 
 export const Route = createFileRoute("/$category/$brand")({
@@ -97,10 +96,9 @@ function BrandProductDirectory() {
           <p className="text-sm text-slate-500 font-medium mt-1">Live pipeline feeds containing real verified aggregates.</p>
         </div>
 
-        {/* Compact, eye-catching nudge toward the AI Advisor further down this
-            same page — deliberately small, not a modal/popup. */}
-        <a
-          href="#ai-advisory"
+        {/* AI Advisor nudge — routes to the dedicated AI page */}
+        <Link
+          to="/ai"
           className="group flex items-center justify-between gap-3 rounded-2xl border border-blue-300 bg-gradient-to-r from-blue-50 via-indigo-50 to-blue-50 px-4 py-2.5 shadow-sm transition hover:border-blue-400 hover:shadow-md"
         >
           <span className="flex items-center gap-2 text-sm font-bold text-blue-700">
@@ -110,7 +108,7 @@ function BrandProductDirectory() {
           <span className="flex items-center gap-1 text-xs font-black uppercase tracking-wide text-blue-600 transition-transform group-hover:translate-x-0.5">
             Try it <ArrowRight className="h-3.5 w-3.5" />
           </span>
-        </a>
+        </Link>
 
         {isError && (
           <div className="rounded-2xl border-2 border-dashed border-rose-300 bg-rose-50 p-6 text-center text-sm font-bold text-rose-600">
@@ -217,17 +215,6 @@ function BrandProductDirectory() {
           </aside>
         </div>
 
-        {/* AI Advisory stays right here on the brand page too — not removed,
-            just also now available up on the homepage. */}
-        <AIAdvisoryForm
-          persistKey={`${category}-${brand}-ai`}
-          allProducts={products}
-          fixedCategory={category}
-          optionsPool={brandCategoryProducts}
-          defaultBudget={budget}
-          anchorId="ai-advisory"
-          modelPlaceholder={`e.g. "${brand} ${category === "Phone" ? "Galaxy S23" : category}"`}
-        />
       </main>
     </div>
   );
