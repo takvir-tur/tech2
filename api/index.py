@@ -396,13 +396,21 @@ def ai_analyze(req: AnalyzeRequest):
         )
         wait_suggestion = resp.choices[0].message.content.strip()
     except Exception as e:
-        # Full detail goes to your terminal for debugging; the user only
-        # sees a friendly message, never a raw stack trace.
+        # Full detail goes to your terminal for debugging
+        error_message = str(e).lower()
         print(f"[ai-analyze] AI call failed: {type(e).__name__}: {e}")
-        wait_suggestion = (
-            "The AI advisor is temporarily unavailable. Make sure Ollama "
-            "(or your configured model provider) is running, then try again."
-        )
+        
+        # --- THE SAFEGUARD ---
+        if "429" in error_message or "quota" in error_message or "exhausted" in error_message:
+            wait_suggestion = (
+                "The AI is currently taking a quick breather due to rate limits! "
+                "Please wait about 60 seconds and try again."
+            )
+        else:
+            wait_suggestion = (
+                "The AI advisor is temporarily unavailable. Please check your API key "
+                "or try again later."
+            )
 
     return {
         "same_model_dealers": [format_item(i) for i in same_model_out[:12]],
