@@ -1,11 +1,14 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Flame, Smartphone, Tablet, Laptop, ChevronLeft, ChevronRight, Info, Loader2 } from "lucide-react";
+import { Flame, ChevronLeft, ChevronRight, Info, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { fetchLiveProducts } from "@/lib/api";
 import { enrichProduct, formatPrice, getProductImage, type LiveProduct } from "@/lib/products";
 import { ProductLink } from "@/components/ProductLink";
+import { ScrollReveal } from "@/components/ScrollReveal";
+import { ProductShowcaseSection } from "@/components/ProductShowcaseSection";
+import { selectBestPhones, selectTopByCategory } from "@/lib/curatedProducts";
 
 export const Route = createFileRoute("/")({
   head: () => ({
@@ -112,6 +115,12 @@ function Home() {
     staleTime: 60_000,
   });
 
+  const products = useMemo(() => (rawProducts ?? []).map((p, i) => enrichProduct(p, i)), [rawProducts]);
+
+  const bestPhones = useMemo(() => selectBestPhones(products), [products]);
+  const bestLaptops = useMemo(() => selectTopByCategory(products, "laptop"), [products]);
+  const bestTablets = useMemo(() => selectTopByCategory(products, "tablet"), [products]);
+
   const hotProducts = CURATED_HOT_DEALS;
   const n = hotProducts.length;
 
@@ -207,6 +216,7 @@ function Home() {
             1. HOT DEALS — unchanged carousel
             ============================================================ */}
         {hotProducts.length > 0 && (
+          <ScrollReveal>
           <section
             className="relative overflow-hidden rounded-3xl border-2 border-amber-400 bg-gradient-to-br from-amber-400/20 via-white to-rose-400/10 p-6 md:p-8 shadow-xl shadow-amber-500/10"
             onMouseEnter={() => setIsPaused(true)}
@@ -316,11 +326,13 @@ function Home() {
               </Button>
             </div>
           </section>
+          </ScrollReveal>
         )}
 
         {/* ============================================================
             2. AI ADVISOR TITLE CARD  — Apple-style: text above, photo below
             ============================================================ */}
+        <ScrollReveal>
         <section className="space-y-4">
           {/* ── Headline text — on plain page background, left-aligned ── */}
           <div className="space-y-0.5 pl-1">
@@ -380,81 +392,14 @@ function Home() {
             </div>
           </Link>
         </section>
+        </ScrollReveal>
 
         {/* ============================================================
-            3. CATEGORY HUB
+            3. PRODUCT CATEGORY SHOWCASES
             ============================================================ */}
-        <section className="space-y-4">
-          <div>
-            <h3 className="text-xs font-black uppercase tracking-widest text-blue-600">Step 1: Choose Core Pipeline</h3>
-            <p className="text-sm text-slate-500 font-medium">Select a category to explore live scraped listings.</p>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <Link
-              to="/$category"
-              params={{ category: "Phone" }}
-              className="relative h-32 overflow-hidden rounded-2xl border border-slate-700 bg-slate-800 text-left transition-all p-6 flex items-end group shadow-sm hover:border-blue-400 hover:shadow-md"
-            >
-              <img
-                src="https://images.unsplash.com/photo-1511707171634-5f897ff02aa9?w=600&auto=format&fit=crop&q=60"
-                alt="Phones"
-                className="absolute inset-0 h-full w-full object-cover opacity-25 group-hover:scale-105 transition-transform duration-500"
-              />
-              <div className="relative z-10 flex items-center gap-3">
-                <div className="p-3 bg-blue-500 rounded-xl text-white shadow-sm">
-                  <Smartphone className="h-5 w-5" />
-                </div>
-                <div>
-                  <h4 className="text-lg font-black text-white">Smartphones</h4>
-                  <p className="text-xs font-bold text-slate-300">iPhones, Galaxy, Pixel & more</p>
-                </div>
-              </div>
-            </Link>
-
-            <Link
-              to="/$category"
-              params={{ category: "Tablet" }}
-              className="relative h-32 overflow-hidden rounded-2xl border border-slate-700 bg-slate-800 text-left transition-all p-6 flex items-end group shadow-sm hover:border-rose-400 hover:shadow-md"
-            >
-              <img
-                src="https://images.unsplash.com/photo-1544244015-0df4b3ffc6b0?w=600&auto=format&fit=crop&q=60"
-                alt="Tablets"
-                className="absolute inset-0 h-full w-full object-cover opacity-25 group-hover:scale-105 transition-transform duration-500"
-              />
-              <div className="relative z-10 flex items-center gap-3">
-                <div className="p-3 bg-rose-500 rounded-xl text-white shadow-sm">
-                  <Tablet className="h-5 w-5" />
-                </div>
-                <div>
-                  <h4 className="text-lg font-black text-white">Tablets & iPads</h4>
-                  <p className="text-xs font-bold text-slate-300">High performance productivity monitors</p>
-                </div>
-              </div>
-            </Link>
-          </div>
-
-          <Link
-            to="/$category"
-            params={{ category: "Laptop" }}
-            className="relative w-full h-28 overflow-hidden rounded-2xl border border-slate-700 bg-slate-800 text-left transition-all p-6 flex items-end group shadow-sm hover:border-amber-400 hover:shadow-md block"
-          >
-            <img
-              src="https://images.unsplash.com/photo-1517336714731-489689fd1ca8?w=1200&auto=format&fit=crop&q=60"
-              alt="Laptops"
-              className="absolute inset-0 h-full w-full object-cover opacity-20 group-hover:scale-105 transition-transform duration-500"
-            />
-            <div className="relative z-10 flex items-center gap-3">
-              <div className="p-3 bg-amber-500 rounded-xl text-white shadow-sm">
-                <Laptop className="h-5 w-5" />
-              </div>
-              <div>
-                <h4 className="text-lg font-black text-white">Premium Laptops</h4>
-                <p className="text-xs font-bold text-slate-300">Aggregated developer workstations & MacBooks</p>
-              </div>
-            </div>
-          </Link>
-        </section>
+        {bestPhones.length > 0 && <ProductShowcaseSection title="Best phones" products={bestPhones} />}
+        {bestLaptops.length > 0 && <ProductShowcaseSection title="Best laptops" products={bestLaptops} />}
+        {bestTablets.length > 0 && <ProductShowcaseSection title="Best iPads / Tablets" products={bestTablets} />}
       </main>
 
       <footer className="border-t border-slate-200 py-8 text-center text-xs font-bold text-slate-500 tracking-wider uppercase font-mono mt-12">

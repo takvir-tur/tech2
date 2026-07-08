@@ -27,7 +27,7 @@ function AIPage() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50/40 to-rose-50/50 font-sans text-slate-900 antialiased">
-      <main className="mx-auto max-w-3xl px-4 py-12 sm:px-6 lg:px-8 space-y-8">
+      <main className="mx-auto max-w-6xl px-4 py-12 sm:px-6 lg:px-8 space-y-8">
         <div className="flex items-center gap-3">
           <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-blue-600 shadow-lg">
             <Sparkles className="h-6 w-6 text-white" />

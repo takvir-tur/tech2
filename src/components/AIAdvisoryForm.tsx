@@ -111,15 +111,15 @@ export function AIAdvisoryForm({
   return (
     <section
       id={anchorId}
-      className="bg-gradient-to-br from-slate-900 via-blue-950 to-slate-900 text-white rounded-3xl p-6 md:p-8 border-2 border-blue-500/30 shadow-xl space-y-5 scroll-mt-24"
+      className="bg-white text-slate-900 rounded-3xl p-6 md:p-8 border border-slate-200 shadow-xl shadow-slate-200/60 space-y-5 scroll-mt-24"
     >
       <div className="flex items-center gap-2.5">
-        <div className="p-2 bg-blue-500/20 rounded-xl text-blue-400 border border-blue-500/30">
+        <div className="p-2 bg-blue-50 rounded-xl text-blue-600 border border-blue-100">
           <Sparkles className="h-5 w-5" />
         </div>
         <div>
-          <h2 className="text-lg font-black tracking-tight">{title}</h2>
-          <p className="text-xs text-slate-400 font-medium">{subtitle}</p>
+          <h2 className="text-lg font-black tracking-tight text-slate-900">{title}</h2>
+          <p className="text-xs text-slate-500 font-medium">{subtitle}</p>
         </div>
       </div>
 
@@ -127,12 +127,12 @@ export function AIAdvisoryForm({
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           {!fixedCategory && (
             <div className="space-y-1.5">
-              <Label className="text-xs font-black uppercase text-slate-400">Category</Label>
+              <Label className="text-xs font-black uppercase text-slate-500">Category</Label>
               <Select value={category} onValueChange={setCategory}>
-                <SelectTrigger className="w-full h-11 bg-slate-950 border border-slate-700 font-bold text-white focus:ring-1 focus:ring-blue-500">
+                <SelectTrigger className="w-full h-11 bg-white border border-slate-200 font-bold text-slate-900 focus:ring-1 focus:ring-blue-500">
                   <SelectValue />
                 </SelectTrigger>
-                <SelectContent className="bg-slate-900 text-white border-slate-700">
+                <SelectContent className="bg-white text-slate-900 border-slate-200">
                   {CATEGORY_OPTIONS.map((c) => (
                     <SelectItem key={c} value={c}>
                       {c}
@@ -144,23 +144,23 @@ export function AIAdvisoryForm({
           )}
 
           <div className="space-y-1.5">
-            <Label className="text-xs font-black uppercase text-slate-400">Model</Label>
+            <Label className="text-xs font-black uppercase text-slate-500">Model</Label>
             <input
               type="text"
               placeholder={modelPlaceholder}
               value={aiModel}
               onChange={(e) => setAiModel(e.target.value)}
-              className="w-full px-4 py-3 rounded-xl bg-slate-950 border border-slate-700 font-medium text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:border-blue-500 transition shadow-inner"
+              className="w-full px-4 py-3 rounded-xl bg-white border border-slate-200 font-medium text-sm text-slate-900 placeholder-slate-400 focus:outline-none focus:border-blue-500 transition"
             />
           </div>
 
           <div className="space-y-1.5">
-            <Label className="text-xs font-black uppercase text-slate-400">Urgency</Label>
+            <Label className="text-xs font-black uppercase text-slate-500">Urgency</Label>
             <Select value={aiUrgency} onValueChange={setAiUrgency}>
-              <SelectTrigger className="w-full h-11 bg-slate-950 border border-slate-700 font-bold text-white focus:ring-1 focus:ring-blue-500">
+              <SelectTrigger className="w-full h-11 bg-white border border-slate-200 font-bold text-slate-900 focus:ring-1 focus:ring-blue-500">
                 <SelectValue />
               </SelectTrigger>
-              <SelectContent className="bg-slate-900 text-white border-slate-700">
+              <SelectContent className="bg-white text-slate-900 border-slate-200">
                 <SelectItem value="flexible">Flexible — no rush</SelectItem>
                 <SelectItem value="soon">Soon — within 2 weeks</SelectItem>
                 <SelectItem value="urgent">Urgent — need it now</SelectItem>
@@ -170,8 +170,8 @@ export function AIAdvisoryForm({
 
           <div className="space-y-1.5">
             <div className="flex justify-between items-baseline">
-              <Label className="text-xs font-black uppercase text-slate-400">Max Budget</Label>
-              <span className="text-sm font-black text-amber-400 font-mono">৳{budget.toLocaleString()}</span>
+              <Label className="text-xs font-black uppercase text-slate-500">Max Budget</Label>
+              <span className="text-sm font-black text-blue-600 font-mono">৳{budget.toLocaleString()}</span>
             </div>
             <Slider value={[budget]} onValueChange={(val) => setBudget(val[0])} min={10_000} max={220_000} step={5_000} className="py-1.5" />
           </div>
@@ -179,7 +179,7 @@ export function AIAdvisoryForm({
 
         {availableStorages.length > 0 && (
           <div className="space-y-1.5">
-            <Label className="text-xs font-black uppercase text-slate-400">Storage (optional)</Label>
+            <Label className="text-xs font-black uppercase text-slate-500">Storage (optional)</Label>
             <div className="flex flex-wrap gap-2">
               {availableStorages.map((rom) => (
                 <button
@@ -188,8 +188,8 @@ export function AIAdvisoryForm({
                   onClick={() => toggleRom(rom)}
                   className={`px-3 py-1.5 rounded-full text-xs font-bold border transition ${
                     aiRoms.includes(rom)
-                      ? "bg-blue-600 border-blue-500 text-white"
-                      : "bg-slate-950 border-slate-700 text-slate-300 hover:border-blue-500"
+                      ? "bg-blue-600 border-blue-600 text-white"
+                      : "bg-white border-slate-200 text-slate-600 hover:border-blue-400"
                   }`}
                 >
                   {rom}
@@ -201,12 +201,12 @@ export function AIAdvisoryForm({
 
         {availableConditions.length > 0 && (
           <div className="space-y-1.5">
-            <Label className="text-xs font-black uppercase text-slate-400">Condition (optional)</Label>
+            <Label className="text-xs font-black uppercase text-slate-500">Condition (optional)</Label>
             <Select value={condition} onValueChange={setCondition}>
-              <SelectTrigger className="w-full sm:w-64 h-11 bg-slate-950 border border-slate-700 font-bold text-white focus:ring-1 focus:ring-blue-500">
+              <SelectTrigger className="w-full sm:w-64 h-11 bg-white border border-slate-200 font-bold text-slate-900 focus:ring-1 focus:ring-blue-500">
                 <SelectValue />
               </SelectTrigger>
-              <SelectContent className="bg-slate-900 text-white border-slate-700">
+              <SelectContent className="bg-white text-slate-900 border-slate-200">
                 <SelectItem value="any">Accept any quality level</SelectItem>
                 {availableConditions.map((c) => (
                   <SelectItem key={c} value={c}>
@@ -234,7 +234,7 @@ export function AIAdvisoryForm({
       </form>
 
       {aiMutation.isError && (
-        <div className="p-4 rounded-xl bg-rose-950/40 border border-rose-500/30 text-rose-200 text-sm">
+        <div className="p-4 rounded-xl bg-rose-50 border border-rose-200 text-rose-600 text-sm">
           Couldn't reach the AI advisory endpoint. Make sure the backend is running and Ollama (or your configured
           model provider) is reachable.
         </div>
