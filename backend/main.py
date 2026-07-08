@@ -7,6 +7,10 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from openai import OpenAI
+import os
+from dotenv import load_dotenv
+
+load_dotenv()
 
 app = FastAPI()
 
@@ -23,7 +27,7 @@ app.add_middleware(
 # Final submission with OpenAI: USE_OLLAMA = False + set OPENAI_API_KEY
 USE_OLLAMA = False
 
-OPENAI_API_KEY = "AIzaSyA_y2Yv3TpjY5mIhs1V3KCMVP8EflPUH4Y"
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 OLLAMA_MODEL   = "llama3.2"
 OPENAI_MODEL   = "gemini-2.5-flash"
 
