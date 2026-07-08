@@ -1,3 +1,4 @@
+from typing import Optional
 import json
 import glob
 import difflib
@@ -42,7 +43,7 @@ else:
     ACTIVE_MODEL = OPENAI_MODEL
 # ─────────────────────────────────────────────────────────────────────────────
 
-BACKEND_DIR = Path(__file__).parent
+BACKEND_DIR = Path(__file__).resolve().parent / "data" 
 
 LAPTOP_KEYWORDS = ["macbook", "laptop", "notebook", "surface pro", "surface book", "dell xps", "thinkpad"]
 TABLET_KEYWORDS = ["ipad", "galaxy tab", "tab s", "tablet", "mediapad", "surface go", "apple watch"]
@@ -168,7 +169,7 @@ def deduplicate(items: list[dict]) -> list[dict]:
     return result
 
 
-def normalize_storage(item: dict) -> str | None:
+def normalize_storage(item: dict) -> Optional[str]:
     """Return a clean storage string like '256GB', '512GB', '1TB'."""
     raw = item.get("storage") or ""
     # Handle formats like "8/512GB", "12+256", "256GB", "1TB"
@@ -413,3 +414,4 @@ def health():
         s = i.get("source_platform", "Unknown")
         sources[s] = sources.get(s, 0) + 1
     return {"status": "ok", "total": len(unique), "by_source": sources}
+
