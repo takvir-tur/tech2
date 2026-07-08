@@ -17,7 +17,7 @@ except ImportError:
     # Vercel handles environment variables natively anyway.
     pass
 
-load_dotenv()
+
 
 app = FastAPI()
 
