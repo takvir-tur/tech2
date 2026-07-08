@@ -321,7 +321,7 @@ export function ProductBrowser({
                     <span className="text-[10px] font-black uppercase tracking-widest text-teal-600">{product.brand}</span>
                     <h4 className="font-black text-slate-900 tracking-tight text-base line-clamp-1">{product.name}</h4>
                     <p className="text-sm font-black text-slate-900 font-mono">
-                      Starting from {formatPrice(product.price)}
+                     <b>{formatPrice(product.price)}</b> 
                     </p>
                   </div>
                 </button>

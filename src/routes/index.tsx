@@ -22,7 +22,7 @@ export const Route = createFileRoute("/")({
   component: Home,
 });
 
-const SLIDE_INTERVAL_MS = 5000;
+const SLIDE_INTERVAL_MS = 2000;
 
 /**
  * Curated "Hot Deals" — one best-value pick per category, sourced from
@@ -182,6 +182,29 @@ function Home() {
       if (rafRef.current != null) cancelAnimationFrame(rafRef.current);
     };
   }, [animating]);
+
+  // Pause auto-advance while the tab is hidden, and snap back to a valid
+  // slide when the tab becomes visible again (avoids blank-slide drift caused
+  // by the browser throttling CSS transitions in background tabs).
+  useEffect(() => {
+    const onVisibilityChange = () => {
+      if (document.visibilityState === "visible") {
+        setAnimating(false);
+        setInnerIdx(1);
+      }
+    };
+    document.addEventListener("visibilitychange", onVisibilityChange);
+    return () => document.removeEventListener("visibilitychange", onVisibilityChange);
+  }, []);
+
+  // Safety clamp: if innerIdx somehow drifts outside [0, n+1] (shouldn't
+  // happen, but can in slow/throttled environments), snap back immediately.
+  useEffect(() => {
+    if (innerIdx < 0 || innerIdx > n + 1) {
+      setAnimating(false);
+      setInnerIdx(1);
+    }
+  }, [innerIdx, n]);
 
   // Auto-advance, paused on hover.
   useEffect(() => {
