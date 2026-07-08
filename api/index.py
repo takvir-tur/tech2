@@ -9,7 +9,13 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from openai import OpenAI
 import os
-from dotenv import load_dotenv
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except ImportError:
+    # If the package isn't found (like on Vercel), just ignore it! 
+    # Vercel handles environment variables natively anyway.
+    pass
 
 load_dotenv()
 
