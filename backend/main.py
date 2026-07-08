@@ -21,17 +21,20 @@ app.add_middleware(
 # ── TOGGLE HERE ──────────────────────────────────────────────────────────────
 # Local testing with Ollama : USE_OLLAMA = True
 # Final submission with OpenAI: USE_OLLAMA = False + set OPENAI_API_KEY
-USE_OLLAMA = True
+USE_OLLAMA = False
 
-OPENAI_API_KEY = "paste-your-openai-key-here"
+OPENAI_API_KEY = "AIzaSyA_y2Yv3TpjY5mIhs1V3KCMVP8EflPUH4Y"
 OLLAMA_MODEL   = "llama3.2"
-OPENAI_MODEL   = "gpt-4o-mini"
+OPENAI_MODEL   = "gemini-2.5-flash"
 
 if USE_OLLAMA:
     client = OpenAI(base_url="http://localhost:11434/v1", api_key="ollama")
     ACTIVE_MODEL = OLLAMA_MODEL
 else:
-    client = OpenAI(api_key=OPENAI_API_KEY)
+    client = OpenAI(
+        api_key=OPENAI_API_KEY, 
+        base_url="https://generativelanguage.googleapis.com/v1beta/openai/"
+    )
     ACTIVE_MODEL = OPENAI_MODEL
 # ─────────────────────────────────────────────────────────────────────────────
 
